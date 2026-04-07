@@ -1,0 +1,24 @@
+{
+  "name": "school-erp-saas",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run start:dev -w apps/api\" \"npm run dev -w apps/web\"",
+    "build": "npm run build -w apps/api && npm run build -w apps/web",
+    "lint": "npm run lint -w apps/api && npm run lint -w apps/web",
+    "start": "concurrently \"npm run start:prod -w apps/api\" \"npm run start:prod -w apps/web\"",
+    "start:api": "npm run start:prod -w apps/api",
+    "start:web": "npm run start:prod -w apps/web",
+    "test:system": "npm run test:system -w apps/api",
+    "db:generate": "npm run prisma:generate -w apps/api",
+    "db:migrate": "npm run prisma:migrate -w apps/api",
+    "db:seed": "npm run prisma:seed -w apps/api",
+    "docker:infra": "docker compose up -d postgres redis",
+    "docker:app": "docker compose --profile app up -d --build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
