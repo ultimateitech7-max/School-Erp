@@ -57,6 +57,32 @@ export class StudentsController {
     return this.studentsService.findOptions(currentUser, schoolId ?? null);
   }
 
+  @Get('registration/:registrationNumber')
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
+  @Permissions('students.read')
+  findByRegistration(
+    @CurrentUser() currentUser: JwtUser,
+    @Param('registrationNumber') registrationNumber: string,
+    @Query('schoolId') schoolId?: string,
+  ) {
+    return this.studentsService.findByRegistration(
+      currentUser,
+      registrationNumber,
+      schoolId ?? null,
+    );
+  }
+
+  @Get(':id/history')
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
+  @Permissions('students.read')
+  findHistory(
+    @CurrentUser() currentUser: JwtUser,
+    @Param('id') id: string,
+    @Query('schoolId') schoolId?: string,
+  ) {
+    return this.studentsService.findHistory(currentUser, id, schoolId ?? null);
+  }
+
   @Get(':id')
   @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
   @Permissions('students.read')

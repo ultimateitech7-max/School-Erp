@@ -129,3 +129,44 @@ export const AlertIcon = createIcon(
     <path d="M10.2 4.9 3.9 16a2 2 0 0 0 1.74 3h12.72A2 2 0 0 0 20.1 16L13.8 4.9a2 2 0 0 0-3.48 0Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
   </>,
 );
+
+export const NoticeIcon = createIcon(
+  <>
+    <path d="M6 8a6 6 0 0 1 12 0v4l2 2v1H4v-1l2-2V8Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
+    <path d="M10 18a2 2 0 0 0 4 0" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+  </>,
+);
+
+export const MessageIcon = createIcon(
+  <>
+    <path d="M5 6.5h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H9l-4 3v-3H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
+    <path d="M8 10.5h8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+    <path d="M8 13.5h5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+  </>,
+);
+
+export const CalendarIcon = createIcon(
+  <>
+    <rect x="4" y="5" width="16" height="15" rx="3" stroke="currentColor" strokeWidth="1.8" />
+    <path d="M8 3v4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+    <path d="M16 3v4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+    <path d="M4 10h16" stroke="currentColor" strokeWidth="1.8" />
+  </>,
+);
+
+export const HomeworkIcon = createIcon(
+  <>
+    <path d="M7 4.5h10a2 2 0 0 1 2 2V19a1.5 1.5 0 0 1-2.46 1.15L12 16.5l-4.54 3.65A1.5 1.5 0 0 1 5 19V6.5a2 2 0 0 1 2-2Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
+    <path d="M9 9h6" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+    <path d="M9 12h4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+  </>,
+);
+
+export const ReportIcon = createIcon(
+  <>
+    <path d="M5 19.5h14" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+    <path d="M8 17V11" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+    <path d="M12 17V7" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+    <path d="M16 17v-4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+  </>,
+);

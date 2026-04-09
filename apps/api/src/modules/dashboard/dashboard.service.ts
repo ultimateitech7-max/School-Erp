@@ -40,16 +40,13 @@ export class DashboardService {
           cacheKey,
           DASHBOARD_TTL_SECONDS,
           async () => {
-            const [todayAttendance, recentActivities, counts, feeTotals] =
-              await Promise.all([
-                this.getTodayAttendanceSummary(schoolId),
-                this.getRecentActivities(
-                  schoolId,
-                  query.limit ?? DEFAULT_ACTIVITY_LIMIT,
-                ),
-                this.getOverviewCounts(schoolId),
-                this.getFeeTotals(schoolId),
-              ]);
+            const todayAttendance = await this.getTodayAttendanceSummary(schoolId);
+            const counts = await this.getOverviewCounts(schoolId);
+            const feeTotals = await this.getFeeTotals(schoolId);
+            const recentActivities = await this.getRecentActivities(
+              schoolId,
+              query.limit ?? DEFAULT_ACTIVITY_LIMIT,
+            );
 
             return {
               schoolId,
@@ -89,10 +86,8 @@ export class DashboardService {
           cacheKey,
           DASHBOARD_TTL_SECONDS,
           async () => {
-            const [summary, chart] = await Promise.all([
-              this.getTodayAttendanceSummary(schoolId),
-              this.getAttendanceChart(schoolId, days),
-            ]);
+            const summary = await this.getTodayAttendanceSummary(schoolId);
+            const chart = await this.getAttendanceChart(schoolId, days);
 
             return {
               schoolId,
@@ -123,10 +118,8 @@ export class DashboardService {
           cacheKey,
           DASHBOARD_TTL_SECONDS,
           async () => {
-            const [totals, chart] = await Promise.all([
-              this.getFeeTotals(schoolId),
-              this.getFeeCollectionChart(schoolId, months),
-            ]);
+            const totals = await this.getFeeTotals(schoolId);
+            const chart = await this.getFeeCollectionChart(schoolId, months);
 
             return {
               schoolId,
@@ -187,23 +180,21 @@ export class DashboardService {
           cacheKey,
           DASHBOARD_TTL_SECONDS,
           async () => {
-            const [summary, recentExams] = await Promise.all([
-              this.getExamSummary(schoolId),
-              this.prisma.exam.findMany({
-                where: this.buildSchoolWhere(schoolId),
-                orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
-                take: limit,
-                include: {
-                  academicClass: {
-                    select: {
-                      id: true,
-                      className: true,
-                      classCode: true,
-                    },
+            const summary = await this.getExamSummary(schoolId);
+            const recentExams = await this.prisma.exam.findMany({
+              where: this.buildSchoolWhere(schoolId),
+              orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
+              take: limit,
+              include: {
+                academicClass: {
+                  select: {
+                    id: true,
+                    className: true,
+                    classCode: true,
                   },
                 },
-              }),
-            ]);
+              },
+            });
 
             return {
               schoolId,
@@ -239,45 +230,43 @@ export class DashboardService {
   private async getOverviewCounts(schoolId: string | null) {
     const schoolWhere = this.buildSchoolWhere(schoolId);
 
-    const [students, teachers, staff, classes, subjects, exams] = await Promise.all([
-      this.prisma.student.count({
-        where: {
-          ...schoolWhere,
-          status: {
-            not: StudentStatus.INACTIVE,
-          },
+    const students = await this.prisma.student.count({
+      where: {
+        ...schoolWhere,
+        status: {
+          not: StudentStatus.INACTIVE,
         },
-      }),
-      this.prisma.user.count({
-        where: {
-          ...schoolWhere,
-          isActive: true,
-          userType: UserType.TEACHER,
-        },
-      }),
-      this.prisma.user.count({
-        where: {
-          ...schoolWhere,
-          isActive: true,
-          userType: UserType.STAFF,
-        },
-      }),
-      this.prisma.academicClass.count({
-        where: {
-          ...schoolWhere,
-          isActive: true,
-        },
-      }),
-      this.prisma.subject.count({
-        where: {
-          ...schoolWhere,
-          isActive: true,
-        },
-      }),
-      this.prisma.exam.count({
-        where: schoolWhere,
-      }),
-    ]);
+      },
+    });
+    const teachers = await this.prisma.user.count({
+      where: {
+        ...schoolWhere,
+        isActive: true,
+        userType: UserType.TEACHER,
+      },
+    });
+    const staff = await this.prisma.user.count({
+      where: {
+        ...schoolWhere,
+        isActive: true,
+        userType: UserType.STAFF,
+      },
+    });
+    const classes = await this.prisma.academicClass.count({
+      where: {
+        ...schoolWhere,
+        isActive: true,
+      },
+    });
+    const subjects = await this.prisma.subject.count({
+      where: {
+        ...schoolWhere,
+        isActive: true,
+      },
+    });
+    const exams = await this.prisma.exam.count({
+      where: schoolWhere,
+    });
 
     return {
       students,
@@ -380,29 +369,27 @@ export class DashboardService {
 
   private async getFeeTotals(schoolId: string | null) {
     const schoolWhere = this.buildSchoolWhere(schoolId);
-    const [assignedAggregate, paidAggregate, paymentsCount] = await Promise.all([
-      this.prisma.feeAssignment.aggregate({
-        where: {
-          ...schoolWhere,
-          status: {
-            not: 'CANCELLED',
-          },
+    const assignedAggregate = await this.prisma.feeAssignment.aggregate({
+      where: {
+        ...schoolWhere,
+        status: {
+          not: 'CANCELLED',
         },
-        _sum: {
-          netAmount: true,
-          paidAmount: true,
-        },
-      }),
-      this.prisma.feePayment.aggregate({
-        where: schoolWhere,
-        _sum: {
-          paidAmount: true,
-        },
-      }),
-      this.prisma.feePayment.count({
-        where: schoolWhere,
-      }),
-    ]);
+      },
+      _sum: {
+        netAmount: true,
+        paidAmount: true,
+      },
+    });
+    const paidAggregate = await this.prisma.feePayment.aggregate({
+      where: schoolWhere,
+      _sum: {
+        paidAmount: true,
+      },
+    });
+    const paymentsCount = await this.prisma.feePayment.count({
+      where: schoolWhere,
+    });
 
     const assignedAmount = this.toNumber(assignedAggregate._sum.netAmount);
     const paidAgainstAssignments = this.toNumber(assignedAggregate._sum.paidAmount);
@@ -464,31 +451,29 @@ export class DashboardService {
     const schoolWhere = this.buildSchoolWhere(schoolId);
     const currentSessionId = await this.resolveCurrentSessionId(schoolId);
 
-    const [classes, admissions] = await Promise.all([
-      this.prisma.academicClass.findMany({
-        where: {
-          ...schoolWhere,
-          isActive: true,
-        },
-        orderBy: [{ sortOrder: 'asc' }, { className: 'asc' }],
-        select: {
-          id: true,
-          className: true,
-          classCode: true,
-        },
-      }),
-      this.prisma.admission.groupBy({
-        by: ['classId'],
-        where: {
-          ...schoolWhere,
-          admissionStatus: AdmissionStatus.ACTIVE,
-          ...(currentSessionId ? { sessionId: currentSessionId } : {}),
-        },
-        _count: {
-          classId: true,
-        },
-      }),
-    ]);
+    const classes = await this.prisma.academicClass.findMany({
+      where: {
+        ...schoolWhere,
+        isActive: true,
+      },
+      orderBy: [{ sortOrder: 'asc' }, { className: 'asc' }],
+      select: {
+        id: true,
+        className: true,
+        classCode: true,
+      },
+    });
+    const admissions = await this.prisma.admission.groupBy({
+      by: ['classId'],
+      where: {
+        ...schoolWhere,
+        admissionStatus: AdmissionStatus.ACTIVE,
+        ...(currentSessionId ? { sessionId: currentSessionId } : {}),
+      },
+      _count: {
+        classId: true,
+      },
+    });
 
     const counts = new Map(
       admissions.map((item) => [item.classId, item._count.classId]),
@@ -504,21 +489,19 @@ export class DashboardService {
 
   private async getExamSummary(schoolId: string | null) {
     const schoolWhere = this.buildSchoolWhere(schoolId);
-    const [examGroups, reportCardAggregate] = await Promise.all([
-      this.prisma.exam.groupBy({
-        by: ['status'],
-        where: schoolWhere,
-        _count: {
-          status: true,
-        },
-      }),
-      this.prisma.reportCard.aggregate({
-        where: schoolWhere,
-        _avg: {
-          percentage: true,
-        },
-      }),
-    ]);
+    const examGroups = await this.prisma.exam.groupBy({
+      by: ['status'],
+      where: schoolWhere,
+      _count: {
+        status: true,
+      },
+    });
+    const reportCardAggregate = await this.prisma.reportCard.aggregate({
+      where: schoolWhere,
+      _avg: {
+        percentage: true,
+      },
+    });
 
     const counts = {
       total: 0,
@@ -561,77 +544,75 @@ export class DashboardService {
 
   private async getRecentActivities(schoolId: string | null, limit: number) {
     const schoolWhere = this.buildSchoolWhere(schoolId);
-    const [students, users, payments, exams] = await Promise.all([
-      this.prisma.student.findMany({
-        where: schoolWhere,
-        orderBy: {
-          createdAt: 'desc',
-        },
-        take: limit,
-        select: {
-          id: true,
-          fullName: true,
-          studentCode: true,
-          createdAt: true,
-        },
-      }),
-      this.prisma.user.findMany({
-        where: {
-          ...schoolWhere,
-          schoolId: schoolId ?? undefined,
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-        take: limit,
-        include: {
-          role: {
-            select: {
-              roleName: true,
-            },
+    const students = await this.prisma.student.findMany({
+      where: schoolWhere,
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: limit,
+      select: {
+        id: true,
+        fullName: true,
+        studentCode: true,
+        createdAt: true,
+      },
+    });
+    const users = await this.prisma.user.findMany({
+      where: {
+        ...schoolWhere,
+        schoolId: schoolId ?? undefined,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: limit,
+      include: {
+        role: {
+          select: {
+            roleName: true,
           },
         },
-      }),
-      this.prisma.feePayment.findMany({
-        where: schoolWhere,
-        orderBy: {
-          paymentDate: 'desc',
-        },
-        take: limit,
-        include: {
-          feeAssignment: {
-            include: {
-              student: {
-                select: {
-                  id: true,
-                  fullName: true,
-                  studentCode: true,
-                },
+      },
+    });
+    const payments = await this.prisma.feePayment.findMany({
+      where: schoolWhere,
+      orderBy: {
+        paymentDate: 'desc',
+      },
+      take: limit,
+      include: {
+        feeAssignment: {
+          include: {
+            student: {
+              select: {
+                id: true,
+                fullName: true,
+                studentCode: true,
               },
-              feeStructure: {
-                select: {
-                  feeName: true,
-                },
+            },
+            feeStructure: {
+              select: {
+                feeName: true,
               },
             },
           },
         },
-      }),
-      this.prisma.exam.findMany({
-        where: schoolWhere,
-        orderBy: {
-          createdAt: 'desc',
-        },
-        take: limit,
-        select: {
-          id: true,
-          examName: true,
-          examCode: true,
-          status: true,
-          createdAt: true,
-        },
-      }),
-    ]);
+      },
+    });
+    const exams = await this.prisma.exam.findMany({
+      where: schoolWhere,
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: limit,
+      select: {
+        id: true,
+        examName: true,
+        examCode: true,
+        status: true,
+        createdAt: true,
+      },
+    });
 
     return [
       ...students.map((student) => ({

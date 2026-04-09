@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import type { ApiMeta, StudentRecord } from '@/utils/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -53,6 +54,7 @@ export function StudentTable({
               <thead>
                 <tr>
                   <TableHeadCell>Name</TableHeadCell>
+                  <TableHeadCell>Registration No</TableHeadCell>
                   <TableHeadCell>Admission No</TableHeadCell>
                   <TableHeadCell>Email</TableHeadCell>
                   <TableHeadCell>Phone</TableHeadCell>
@@ -71,6 +73,7 @@ export function StudentTable({
                         <span className="muted-text">{student.studentCode}</span>
                       </div>
                     </TableCell>
+                    <TableCell>{student.registrationNumber ?? '-'}</TableCell>
                     <TableCell>{student.admissionNo ?? '-'}</TableCell>
                     <TableCell>{student.email ?? '-'}</TableCell>
                     <TableCell>{student.phone ?? '-'}</TableCell>
@@ -83,6 +86,9 @@ export function StudentTable({
                     </TableCell>
                     <TableCell>
                       <div className="table-actions">
+                        <Link className="ui-button ui-button-secondary ui-button-md" href={`/students/${student.id}`}>
+                          View
+                        </Link>
                         <Button
                           onClick={() => onEdit(student)}
                           type="button"

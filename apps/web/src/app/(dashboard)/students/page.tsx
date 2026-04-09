@@ -1,6 +1,7 @@
 'use client';
 
 import { startTransition, useDeferredValue, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { StudentForm } from './components/StudentForm';
 import { StudentTable } from './components/StudentTable';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -27,6 +28,7 @@ const emptyOptions: StudentOptionsPayload = {
 };
 
 export default function StudentsPage() {
+  const router = useRouter();
   const [students, setStudents] = useState<StudentRecord[]>([]);
   const [meta, setMeta] = useState<ApiMeta>(initialMeta);
   const [options, setOptions] = useState<StudentOptionsPayload>(emptyOptions);
@@ -41,6 +43,8 @@ export default function StudentsPage() {
     text: string;
   } | null>(null);
   const [searchInput, setSearchInput] = useState('');
+  const [registrationSearch, setRegistrationSearch] = useState('');
+  const [registrationLookupLoading, setRegistrationLookupLoading] = useState(false);
   const deferredSearch = useDeferredValue(searchInput);
   const [page, setPage] = useState(1);
   const [reloadIndex, setReloadIndex] = useState(0);
@@ -146,6 +150,39 @@ export default function StudentsPage() {
     setMessage(null);
   };
 
+  const handleRegistrationLookup = async () => {
+    const normalizedRegistrationNumber = registrationSearch.trim().toUpperCase();
+
+    if (!normalizedRegistrationNumber) {
+      setMessage({
+        type: 'error',
+        text: 'Enter a registration number to search.',
+      });
+      return;
+    }
+
+    setRegistrationLookupLoading(true);
+    setMessage(null);
+
+    try {
+      const response = await apiFetch<ApiSuccessResponse<StudentRecord>>(
+        `/students/registration/${encodeURIComponent(normalizedRegistrationNumber)}`,
+      );
+
+      router.push(`/students/${response.data.id}`);
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text:
+          error instanceof Error
+            ? error.message
+            : 'Failed to find student by registration number.',
+      });
+    } finally {
+      setRegistrationLookupLoading(false);
+    }
+  };
+
   const confirmDelete = async () => {
     if (!pendingDeleteStudent) {
       return;
@@ -201,11 +238,34 @@ export default function StudentsPage() {
         <div className="students-toolbar-actions">
           <input
             className="search-input"
-            placeholder="Search by name or admission no"
+            placeholder="Search by name, registration no, or admission no"
             type="search"
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
           />
+          <div className="toolbar-inline-actions">
+            <input
+              className="search-input"
+              placeholder="Find by registration no"
+              type="search"
+              value={registrationSearch}
+              onChange={(event) => setRegistrationSearch(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  void handleRegistrationLookup();
+                }
+              }}
+            />
+            <button
+              className="secondary-button"
+              disabled={registrationLookupLoading}
+              onClick={() => void handleRegistrationLookup()}
+              type="button"
+            >
+              {registrationLookupLoading ? 'Searching...' : 'Find Student'}
+            </button>
+          </div>
           {editingStudent ? (
             <button
               className="secondary-button"

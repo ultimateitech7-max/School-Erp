@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
-import { IBM_Plex_Mono, Plus_Jakarta_Sans } from 'next/font/google';
+import { IBM_Plex_Mono, Montserrat, Plus_Jakarta_Sans } from 'next/font/google';
+import { InitialLoader } from '@/components/ui/initial-loader';
 import './globals.css';
 
 const headingFont = Plus_Jakarta_Sans({
@@ -11,6 +12,12 @@ const monoFont = IBM_Plex_Mono({
   subsets: ['latin'],
   variable: '--font-mono',
   weight: ['400', '500', '600'],
+});
+
+const brandFont = Montserrat({
+  subsets: ['latin'],
+  variable: '--font-brand',
+  weight: ['700', '800'],
 });
 
 export const metadata: Metadata = {
@@ -25,7 +32,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${headingFont.variable} ${monoFont.variable}`}>
+      <body
+        className={`${headingFont.variable} ${monoFont.variable} ${brandFont.variable}`}
+      >
+        <InitialLoader />
         {children}
       </body>
     </html>

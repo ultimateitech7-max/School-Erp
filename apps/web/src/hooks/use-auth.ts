@@ -19,7 +19,13 @@ export function useAuth() {
         permissions: response.permissions,
         user: response.user,
       });
-      router.push('/');
+      router.push(
+        response.user.role === 'PARENT'
+          ? '/parent'
+          : response.user.role === 'STUDENT'
+            ? '/student'
+            : '/',
+      );
       return response;
     } finally {
       setIsPending(false);

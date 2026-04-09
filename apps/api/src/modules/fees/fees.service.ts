@@ -519,6 +519,9 @@ export class FeesService {
       });
 
       return createdPayment;
+    }, {
+      maxWait: 10_000,
+      timeout: 20_000,
     });
 
     await this.invalidateFeeCaches(schoolId);

@@ -26,6 +26,14 @@ export class CreateStudentDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(80)
+  @Transform(({ value }) =>
+    value ? String(value).trim().toUpperCase() : undefined,
+  )
+  registrationNumber?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(50)
   @Transform(({ value }) =>
     value ? String(value).trim().toUpperCase() : undefined,

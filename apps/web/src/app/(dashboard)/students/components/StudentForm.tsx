@@ -134,6 +134,21 @@ export function StudentForm({
 
       <form className="simple-form" onSubmit={handleSubmit}>
         <label>
+          <span>Registration Number</span>
+          <input
+            disabled
+            placeholder={
+              mode === 'edit'
+                ? initialStudent?.registrationNumber ?? 'Not assigned'
+                : 'Auto-generated after student creation'
+            }
+            readOnly
+            type="text"
+            value={mode === 'edit' ? initialStudent?.registrationNumber ?? '' : ''}
+          />
+        </label>
+
+        <label>
           <span>Name</span>
           <input
             required

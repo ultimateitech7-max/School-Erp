@@ -33,65 +33,71 @@ export class SchoolsService {
 
     const hashedPassword = await bcrypt.hash(dto.adminPassword, 10);
 
-    const created = await this.prisma.$transaction(async (tx) => {
-      const schoolAdminRole = await tx.role.findUnique({
-        where: {
-          scopeKey_roleCode: {
-            scopeKey: GLOBAL_SCOPE_KEY,
-            roleCode: 'SCHOOL_ADMIN',
+    const created = await this.prisma.$transaction(
+      async (tx) => {
+        const schoolAdminRole = await tx.role.findUnique({
+          where: {
+            scopeKey_roleCode: {
+              scopeKey: GLOBAL_SCOPE_KEY,
+              roleCode: 'SCHOOL_ADMIN',
+            },
           },
-        },
-      });
-
-      if (!schoolAdminRole) {
-        throw new ConflictException(
-          'Seed roles are missing. Run the Prisma seed script first.',
-        );
-      }
-
-      const school = await tx.school.create({
-        data: {
-          name: dto.name,
-          schoolCode,
-          subdomain: schoolCode,
-        },
-      });
-
-      const adminUser = await tx.user.create({
-        data: {
-          fullName: dto.adminName,
-          email: adminEmail,
-          passwordHash: hashedPassword,
-          roleId: schoolAdminRole.id,
-          schoolId: school.id,
-          userType: UserType.ADMIN,
-          designation: 'School Administrator',
-        },
-        include: {
-          role: true,
-        },
-      });
-
-      const coreModules = await tx.module.findMany({
-        where: {
-          isCore: true,
-          isActive: true,
-        },
-      });
-
-      if (coreModules.length > 0) {
-        await tx.schoolModule.createMany({
-          data: coreModules.map((module) => ({
-            schoolId: school.id,
-            moduleId: module.id,
-            enabled: true,
-            enabledAt: new Date(),
-          })),
         });
-      }
 
-      return { school, adminUser };
-    });
+        if (!schoolAdminRole) {
+          throw new ConflictException(
+            'Seed roles are missing. Run the Prisma seed script first.',
+          );
+        }
+
+        const school = await tx.school.create({
+          data: {
+            name: dto.name,
+            schoolCode,
+            subdomain: schoolCode,
+          },
+        });
+
+        const adminUser = await tx.user.create({
+          data: {
+            fullName: dto.adminName,
+            email: adminEmail,
+            passwordHash: hashedPassword,
+            roleId: schoolAdminRole.id,
+            schoolId: school.id,
+            userType: UserType.ADMIN,
+            designation: 'School Administrator',
+          },
+          include: {
+            role: true,
+          },
+        });
+
+        const coreModules = await tx.module.findMany({
+          where: {
+            isCore: true,
+            isActive: true,
+          },
+        });
+
+        if (coreModules.length > 0) {
+          await tx.schoolModule.createMany({
+            data: coreModules.map((module) => ({
+              schoolId: school.id,
+              moduleId: module.id,
+              enabled: true,
+              enabledAt: new Date(),
+            })),
+          });
+        }
+
+        return { school, adminUser };
+      },
+      {
+        maxWait: 10_000,
+        timeout: 60_000,
+      },
+    );
 
     return {
       school: created.school,

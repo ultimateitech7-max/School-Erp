@@ -724,6 +724,8 @@ export class UsersService {
         return UserType.TEACHER;
       case RoleType.STAFF:
         return UserType.STAFF;
+      case RoleType.PARENT:
+        return UserType.PARENT;
       default:
         return UserType.ADMIN;
     }

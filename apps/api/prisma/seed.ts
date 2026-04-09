@@ -132,6 +132,48 @@ const permissions = [
     actionKey: 'MANAGE',
     description: 'Create exams and enter marks',
   },
+  {
+    permissionCode: 'communication.read',
+    permissionName: 'Read Communication',
+    actionKey: 'READ',
+    description: 'View notices and communication records',
+  },
+  {
+    permissionCode: 'communication.manage',
+    permissionName: 'Manage Communication',
+    actionKey: 'MANAGE',
+    description: 'Create notices and manage communication records',
+  },
+  {
+    permissionCode: 'reports.read',
+    permissionName: 'Read Reports',
+    actionKey: 'READ',
+    description: 'View attendance, fees, and result reports',
+  },
+  {
+    permissionCode: 'calendar.read',
+    permissionName: 'Read Calendar',
+    actionKey: 'READ',
+    description: 'View holidays and events',
+  },
+  {
+    permissionCode: 'calendar.manage',
+    permissionName: 'Manage Calendar',
+    actionKey: 'MANAGE',
+    description: 'Create holidays and events',
+  },
+  {
+    permissionCode: 'homework.read',
+    permissionName: 'Read Homework',
+    actionKey: 'READ',
+    description: 'View homework assigned to classes',
+  },
+  {
+    permissionCode: 'homework.manage',
+    permissionName: 'Manage Homework',
+    actionKey: 'MANAGE',
+    description: 'Create and manage homework assignments',
+  },
 ] as const;
 
 const superAdminUser = {
@@ -310,7 +352,12 @@ async function seedPermissions() {
       permission.permissionCode === 'attendance.read' ||
       permission.permissionCode === 'attendance.manage' ||
       permission.permissionCode === 'exams.read' ||
-      permission.permissionCode === 'exams.manage'
+      permission.permissionCode === 'exams.manage' ||
+      permission.permissionCode === 'reports.read' ||
+      permission.permissionCode === 'calendar.read' ||
+      permission.permissionCode === 'homework.read' ||
+      permission.permissionCode === 'homework.manage' ||
+      permission.permissionCode === 'communication.read'
     ) {
       await prisma.rolePermission.upsert({
         where: {
@@ -480,6 +527,46 @@ async function seedUsers(schoolId: string) {
       isActive: true,
     },
   });
+
+  const seededTeacherUser = await prisma.user.findUnique({
+    where: {
+      email: teacherUser.email,
+    },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      phone: true,
+      schoolId: true,
+    },
+  });
+
+  if (seededTeacherUser?.schoolId) {
+    await prisma.teacher.upsert({
+      where: {
+        userId: seededTeacherUser.id,
+      },
+      update: {
+        schoolId: seededTeacherUser.schoolId,
+        fullName: seededTeacherUser.fullName,
+        email: seededTeacherUser.email,
+        phone: seededTeacherUser.phone,
+        status: 'ACTIVE',
+      },
+      create: {
+        schoolId: seededTeacherUser.schoolId,
+        userId: seededTeacherUser.id,
+        employeeCode: 'TCHR-001',
+        firstName: seededTeacherUser.fullName.split(' ')[0] ?? 'Demo',
+        lastName:
+          seededTeacherUser.fullName.split(' ').slice(1).join(' ') || 'Teacher',
+        fullName: seededTeacherUser.fullName,
+        email: seededTeacherUser.email,
+        phone: seededTeacherUser.phone,
+        status: 'ACTIVE',
+      },
+    });
+  }
 }
 
 async function seedAcademicSession(schoolId: string) {
@@ -525,12 +612,81 @@ async function seedAcademicSession(schoolId: string) {
   });
 }
 
+async function backfillStudentRegistrationNumbers() {
+  const schools = await prisma.school.findMany({
+    select: {
+      id: true,
+      schoolCode: true,
+    },
+  });
+
+  for (const school of schools) {
+    const prefix =
+      school.schoolCode.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 10) ||
+      'SCH';
+
+    const students = await prisma.student.findMany({
+      where: {
+        schoolId: school.id,
+      },
+      orderBy: [
+        {
+          createdAt: 'asc',
+        },
+        {
+          id: 'asc',
+        },
+      ],
+      select: {
+        id: true,
+        createdAt: true,
+        registrationNumber: true,
+      },
+    });
+
+    const existingRegistrationNumbers = new Set(
+      students
+        .map((student) => student.registrationNumber)
+        .filter((registrationNumber): registrationNumber is string =>
+          Boolean(registrationNumber),
+        ),
+    );
+
+    for (const student of students) {
+      if (student.registrationNumber) {
+        continue;
+      }
+
+      const year = student.createdAt.getUTCFullYear();
+      let sequence = 1;
+      let registrationNumber = `${prefix}-${year}-${String(sequence).padStart(4, '0')}`;
+
+      while (existingRegistrationNumbers.has(registrationNumber)) {
+        sequence += 1;
+        registrationNumber = `${prefix}-${year}-${String(sequence).padStart(4, '0')}`;
+      }
+
+      await prisma.student.update({
+        where: {
+          id: student.id,
+        },
+        data: {
+          registrationNumber,
+        },
+      });
+
+      existingRegistrationNumbers.add(registrationNumber);
+    }
+  }
+}
+
 async function main() {
   const school = await seedSchool();
   await seedRoles();
   await seedPermissions();
   await seedAcademicSession(school.id);
   await seedUsers(school.id);
+  await backfillStudentRegistrationNumbers();
 
   console.log('Seed completed successfully.');
   console.log(`Super Admin: ${superAdminUser.email} / ${superAdminUser.password}`);

@@ -6,9 +6,23 @@ interface ApiFetchOptions extends RequestInit {
   auth?: boolean;
 }
 
-export type UserRole = 'SUPER_ADMIN' | 'SCHOOL_ADMIN' | 'TEACHER' | 'STAFF';
-export type UserType = 'ADMIN' | 'TEACHER' | 'STAFF';
+export type UserRole =
+  | 'SUPER_ADMIN'
+  | 'SCHOOL_ADMIN'
+  | 'TEACHER'
+  | 'STUDENT'
+  | 'STAFF'
+  | 'PARENT';
+export type UserType = 'ADMIN' | 'TEACHER' | 'STAFF' | 'PARENT';
 export type UserStatus = 'ACTIVE' | 'INACTIVE';
+export type ParentRelationType =
+  | 'FATHER'
+  | 'MOTHER'
+  | 'GUARDIAN'
+  | 'BROTHER'
+  | 'SISTER'
+  | 'RELATIVE'
+  | 'OTHER';
 export type SubjectType = 'THEORY' | 'PRACTICAL' | 'BOTH';
 export type FeeFrequency =
   | 'ONE_TIME'
@@ -46,6 +60,16 @@ export type ExamStatus =
   | 'ONGOING'
   | 'PUBLISHED'
   | 'CLOSED';
+export type AcademicSessionStatus = 'ACTIVE' | 'INACTIVE' | 'COMPLETED';
+export type AdmissionApplicationStatus =
+  | 'INQUIRY'
+  | 'APPLIED'
+  | 'UNDER_REVIEW'
+  | 'APPROVED'
+  | 'ENROLLED'
+  | 'REJECTED';
+export type NoticeAudienceType = 'ALL' | 'STUDENTS' | 'PARENTS' | 'STAFF';
+export type HolidayType = 'HOLIDAY' | 'EVENT';
 
 export interface ApiMeta {
   page: number;
@@ -111,6 +135,7 @@ export interface UserFormPayload {
 export interface StudentRecord {
   id: string;
   name: string;
+  registrationNumber: string | null;
   admissionNo: string | null;
   studentCode: string;
   email?: string | null;
@@ -119,6 +144,12 @@ export interface StudentRecord {
   dateOfBirth: string;
   joinedOn?: string | null;
   sessionId?: string | null;
+  session?: {
+    id: string;
+    name: string;
+    isCurrent: boolean;
+    isActive: boolean;
+  } | null;
   class?: {
     id: string;
     name: string;
@@ -160,6 +191,127 @@ export interface StudentFormPayload {
   classId?: string;
   sectionId?: string;
   sessionId?: string;
+}
+
+export interface StudentHistoryBasicRecord extends StudentRecord {}
+
+export interface StudentEnrollmentHistoryRecord {
+  id: string;
+  admissionNo: string;
+  rollNo: string | null;
+  status: string;
+  admissionDate: string;
+  session: {
+    id: string;
+    name: string;
+    startDate: string;
+    endDate: string;
+    isCurrent: boolean;
+    isActive: boolean;
+  };
+  class: {
+    id: string;
+    name: string;
+    classCode: string;
+  };
+  section: {
+    id: string;
+    name: string;
+  } | null;
+}
+
+export interface StudentAttendanceHistorySessionRecord {
+  session: {
+    id: string;
+    name: string;
+    isCurrent: boolean;
+  };
+  totalDays: number;
+  present: number;
+  absent: number;
+  late: number;
+  leave: number;
+  percentage: number;
+}
+
+export interface StudentAttendanceHistorySummary {
+  overall: {
+    totalDays: number;
+    present: number;
+    absent: number;
+    late: number;
+    leave: number;
+    percentage: number;
+  };
+  bySession: StudentAttendanceHistorySessionRecord[];
+}
+
+export interface StudentFeeHistorySessionRecord {
+  session: {
+    id: string;
+    name: string;
+    isCurrent: boolean;
+  };
+  assignmentsCount: number;
+  totalAssigned: number;
+  totalPaid: number;
+  totalDue: number;
+}
+
+export interface StudentFeeHistorySummary {
+  overall: {
+    assignmentsCount: number;
+    totalAssigned: number;
+    totalPaid: number;
+    totalDue: number;
+  };
+  bySession: StudentFeeHistorySessionRecord[];
+}
+
+export interface StudentResultHistoryRecord {
+  id: string;
+  examId: string;
+  examName: string;
+  examCode: string;
+  examType: string;
+  startDate: string;
+  endDate: string;
+  totalMarks: number;
+  obtainedMarks: number;
+  percentage: number;
+  grade: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+}
+
+export interface StudentResultHistorySessionRecord {
+  session: {
+    id: string;
+    name: string;
+    isCurrent: boolean;
+  };
+  examCount: number;
+  averagePercentage: number;
+  results: StudentResultHistoryRecord[];
+}
+
+export interface StudentResultHistorySummary {
+  overall: {
+    examCount: number;
+    totalMarks: number;
+    obtainedMarks: number;
+    averagePercentage: number;
+  };
+  bySession: StudentResultHistorySessionRecord[];
+}
+
+export interface StudentHistoryPayload {
+  student: StudentHistoryBasicRecord;
+  enrollmentHistory: StudentEnrollmentHistoryRecord[];
+  promotionHistory: PromotionRecord[];
+  attendanceSummary: StudentAttendanceHistorySummary;
+  feeSummary: StudentFeeHistorySummary;
+  resultSummary: StudentResultHistorySummary;
 }
 
 export interface AcademicSectionPreview {
@@ -822,6 +974,832 @@ export interface DashboardExamsRecord {
   schoolId: string | null;
   summary: DashboardExamSummaryRecord;
   recentExams: DashboardExamRecord[];
+}
+
+export interface AcademicSessionRecord {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  isCurrent: boolean;
+  isActive: boolean;
+  status: AcademicSessionStatus;
+  schoolId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AcademicSessionFormPayload {
+  name: string;
+  startDate: string;
+  endDate: string;
+  isCurrent?: boolean;
+  isActive?: boolean;
+  status?: AcademicSessionStatus;
+  schoolId?: string;
+}
+
+export interface AdmissionApplicationRecord {
+  id: string;
+  schoolId: string;
+  studentId: string | null;
+  school: {
+    id: string;
+    name: string;
+    schoolCode: string;
+  } | null;
+  student: {
+    id: string;
+    name: string;
+    registrationNumber: string | null;
+    studentCode: string;
+  } | null;
+  studentName: string;
+  fatherName: string;
+  motherName: string;
+  phone: string;
+  email: string | null;
+  address: string;
+  classApplied: string;
+  previousSchool: string | null;
+  dob: string;
+  status: AdmissionApplicationStatus;
+  remarks: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdmissionFormPayload {
+  studentName: string;
+  fatherName: string;
+  motherName: string;
+  phone: string;
+  email?: string;
+  address: string;
+  classApplied: string;
+  previousSchool?: string;
+  dob: string;
+  remarks?: string;
+  schoolId?: string;
+}
+
+export interface ParentLinkedStudentRecord {
+  id: string;
+  name: string;
+  registrationNumber: string | null;
+  relationType: ParentRelationType;
+  class: {
+    id: string;
+    name: string;
+  } | null;
+  section: {
+    id: string;
+    name: string;
+  } | null;
+  session: {
+    id: string;
+    name: string;
+    isCurrent: boolean;
+  } | null;
+}
+
+export interface ParentRecord {
+  id: string;
+  schoolId: string;
+  userId: string | null;
+  fullName: string;
+  phone: string;
+  email: string | null;
+  address: string | null;
+  relationType: ParentRelationType;
+  emergencyContact: string | null;
+  childrenCount: number;
+  linkedStudents: ParentLinkedStudentRecord[];
+  portalAccess: {
+    userId: string;
+    email: string;
+    isActive: boolean;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ParentFormPayload {
+  fullName: string;
+  phone: string;
+  email?: string;
+  address?: string;
+  relationType: ParentRelationType;
+  emergencyContact?: string;
+  portalPassword?: string;
+  schoolId?: string;
+}
+
+export interface ParentStudentLinkPayload {
+  studentId: string;
+  relationType?: ParentRelationType;
+}
+
+export interface ParentDashboardChildRecord {
+  id: string;
+  name: string;
+  registrationNumber: string | null;
+  relationType: ParentRelationType;
+  class: {
+    id: string;
+    name: string;
+  } | null;
+  section: {
+    id: string;
+    name: string;
+  } | null;
+  feeSummary: {
+    totalAssigned: number;
+    totalPaid: number;
+    totalDue: number;
+  };
+  attendanceSummary: {
+    totalDays: number;
+    present: number;
+    percentage: number;
+  };
+}
+
+export interface ParentDashboardPayload {
+  parent: ParentRecord;
+  children: ParentDashboardChildRecord[];
+  notices: NoticeRecord[];
+  holidays: HolidayRecord[];
+}
+
+export interface PortalCurrentEnrollmentRecord {
+  id: string;
+  admissionNo: string;
+  rollNo: string | null;
+  status: string;
+  admissionDate: string;
+  session: {
+    id: string;
+    name: string;
+    startDate: string;
+    endDate: string;
+    isCurrent: boolean;
+    isActive: boolean;
+  };
+  class: {
+    id: string;
+    name: string;
+    classCode: string;
+  };
+  section: {
+    id: string;
+    name: string;
+  } | null;
+}
+
+export interface PortalPaymentRecord {
+  id: string;
+  amount: number;
+  paymentDate: string;
+  remarks: string | null;
+  receiptNo: string;
+  paymentMode: PaymentMode;
+  feeName: string;
+  session: {
+    id: string;
+    name: string;
+    isCurrent: boolean;
+  } | null;
+}
+
+export interface StudentPortalDashboardPayload {
+  student: StudentRecord;
+  currentEnrollment: PortalCurrentEnrollmentRecord | null;
+  attendanceSummary: StudentAttendanceHistorySummary;
+  feeSummary: StudentFeeHistorySummary;
+  resultSummary: StudentResultHistorySummary;
+  homework: HomeworkRecord[];
+  holidays: HolidayRecord[];
+  notices: NoticeRecord[];
+}
+
+export interface ParentPortalDetailPayload {
+  student: StudentRecord;
+  attendanceSummary?: StudentAttendanceHistorySummary;
+  feeSummary?: StudentFeeHistorySummary;
+  paymentHistory?: PortalPaymentRecord[];
+  resultSummary?: StudentResultHistorySummary;
+}
+
+export interface StudentPortalAttendancePayload {
+  student: StudentRecord;
+  attendanceSummary: StudentAttendanceHistorySummary;
+}
+
+export interface StudentPortalFeesPayload {
+  student: StudentRecord;
+  feeSummary: StudentFeeHistorySummary;
+  paymentHistory: PortalPaymentRecord[];
+}
+
+export interface StudentPortalResultsPayload {
+  student: StudentRecord;
+  resultSummary: StudentResultHistorySummary;
+}
+
+export interface StudentPortalHomeworkPayload {
+  student: StudentRecord;
+  currentEnrollment: PortalCurrentEnrollmentRecord | null;
+  homework: HomeworkRecord[];
+}
+
+export interface StudentPortalHolidaysPayload {
+  student: StudentRecord;
+  holidays: HolidayRecord[];
+}
+
+export type TimetableDayOfWeek =
+  | 'MONDAY'
+  | 'TUESDAY'
+  | 'WEDNESDAY'
+  | 'THURSDAY'
+  | 'FRIDAY'
+  | 'SATURDAY'
+  | 'SUNDAY';
+
+export interface TimetableEntryRecord {
+  id: string;
+  schoolId: string;
+  dayOfWeek: TimetableDayOfWeek;
+  periodNumber: number;
+  startTime: string;
+  endTime: string;
+  class: {
+    id: string;
+    name: string;
+    classCode: string;
+  };
+  section: {
+    id: string;
+    name: string;
+  } | null;
+  subject: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  teacher: {
+    id: string;
+    name: string;
+    employeeCode: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TimetableOptionClass {
+  id: string;
+  name: string;
+  sections: Array<{
+    id: string;
+    name: string;
+  }>;
+}
+
+export interface TimetableOptionTeacher {
+  id: string;
+  name: string;
+}
+
+export interface TimetableOptionSubject {
+  id: string;
+  name: string;
+  code: string;
+}
+
+export interface TimetableOptionsPayload {
+  classes: TimetableOptionClass[];
+  teachers: TimetableOptionTeacher[];
+  subjects: TimetableOptionSubject[];
+  days: TimetableDayOfWeek[];
+}
+
+export interface TimetableFormPayload {
+  classId: string;
+  sectionId?: string;
+  subjectId: string;
+  teacherId: string;
+  dayOfWeek: TimetableDayOfWeek;
+  periodNumber: number;
+  startTime: string;
+  endTime: string;
+}
+
+export interface UpdateTimetableFormPayload
+  extends Partial<TimetableFormPayload> {
+  schoolId?: string;
+}
+
+export interface ExamDateSheetEntryRecord {
+  id: string;
+  subject: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  examDate: string;
+  startTime: string;
+  endTime: string;
+}
+
+export interface ExamDateSheetRecord {
+  id: string;
+  schoolId: string;
+  examName: string;
+  isPublished: boolean;
+  school: {
+    id: string;
+    name: string;
+    schoolCode: string;
+  };
+  class: {
+    id: string;
+    name: string;
+    classCode: string;
+  };
+  entries: ExamDateSheetEntryRecord[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExamDateSheetOptionSubject {
+  id: string;
+  name: string;
+  code: string;
+}
+
+export interface ExamDateSheetOptionClass {
+  id: string;
+  name: string;
+  classCode: string;
+  subjects: ExamDateSheetOptionSubject[];
+}
+
+export interface ExamDateSheetOptionsPayload {
+  classes: ExamDateSheetOptionClass[];
+}
+
+export interface ExamDateSheetFormPayload {
+  classId: string;
+  examName: string;
+  entries: Array<{
+    subjectId: string;
+    examDate: string;
+    startTime: string;
+    endTime: string;
+  }>;
+}
+
+export interface NoticeRecord {
+  id: string;
+  schoolId: string;
+  title: string;
+  description: string;
+  audienceType: NoticeAudienceType;
+  isPublished: boolean;
+  expiryDate: string | null;
+  school: {
+    id: string;
+    name: string;
+    schoolCode: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NoticeFormPayload {
+  title: string;
+  description: string;
+  audienceType: NoticeAudienceType;
+  isPublished?: boolean;
+  expiryDate?: string;
+  schoolId?: string;
+}
+
+export interface NotificationRecord {
+  id: string;
+  schoolId: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: string;
+  isRead: boolean;
+  createdAt: string;
+  readAt: string | null;
+}
+
+export interface NotificationMeta extends ApiMeta {
+  unreadCount: number;
+}
+
+export interface MessageRecord {
+  id: string;
+  schoolId: string;
+  subject: string | null;
+  message: string;
+  isRead: boolean;
+  readAt: string | null;
+  sender: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    roleType: UserRole;
+  };
+  receiver: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    roleType: UserRole;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MessageRecipientRecord {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  roleType: UserRole;
+  userType: UserType;
+}
+
+export interface MessageFormPayload {
+  receiverId: string;
+  subject?: string;
+  message: string;
+  schoolId?: string;
+}
+
+export interface HomeworkRecord {
+  id: string;
+  schoolId: string;
+  title: string;
+  description: string;
+  dueDate: string;
+  class: {
+    id: string;
+    name: string;
+    classCode: string;
+  };
+  section: {
+    id: string;
+    name: string;
+  } | null;
+  subject: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  teacher: {
+    id: string;
+    name: string;
+    employeeCode: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HomeworkFormPayload {
+  classId: string;
+  sectionId?: string;
+  subjectId: string;
+  teacherId: string;
+  title: string;
+  description: string;
+  dueDate: string;
+  schoolId?: string;
+}
+
+export interface HomeworkOptionsPayload {
+  classes: Array<{
+    id: string;
+    name: string;
+    sections: Array<{
+      id: string;
+      name: string;
+    }>;
+  }>;
+  subjects: Array<{
+    id: string;
+    name: string;
+    code: string;
+  }>;
+  teachers: Array<{
+    id: string;
+    name: string;
+    employeeCode: string;
+  }>;
+}
+
+export interface AttendanceReportPayload {
+  summary: {
+    total: number;
+    present: number;
+    absent: number;
+    late: number;
+    leave: number;
+    percentage: number;
+  };
+  classes: Array<{
+    classId: string;
+    className: string;
+    classCode: string;
+    total: number;
+  }>;
+}
+
+export interface FeesReportPayload {
+  summary: {
+    totalAssigned: number;
+    totalPaid: number;
+    totalDue: number;
+  };
+  classes: Array<{
+    classId: string;
+    className: string;
+    totalAssigned: number;
+    totalPaid: number;
+    totalDue: number;
+  }>;
+}
+
+export interface ResultsReportPayload {
+  summary: {
+    totalExams: number;
+    averagePercentage: number;
+  };
+  exams: Array<{
+    examId: string;
+    examName: string;
+    className: string;
+    averagePercentage: number;
+    marksCount: number;
+  }>;
+}
+
+export interface HolidayRecord {
+  id: string;
+  schoolId: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  type: HolidayType;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HolidayFormPayload {
+  title: string;
+  startDate: string;
+  endDate: string;
+  type: HolidayType;
+  schoolId?: string;
+}
+
+export interface UpdateAdmissionStatusPayload {
+  status: AdmissionApplicationStatus;
+  remarks?: string;
+  schoolId?: string;
+}
+
+export type PromotionAction = 'PROMOTED' | 'DETAINED';
+export type PromotionPreviewStatus =
+  | 'VALID'
+  | 'ALREADY_PROMOTED'
+  | 'INVALID_DATA'
+  | 'CONFLICT';
+
+export interface PromotionOptionSection {
+  id: string;
+  name: string;
+}
+
+export interface PromotionOptionClass {
+  id: string;
+  name: string;
+  sections: PromotionOptionSection[];
+}
+
+export interface PromotionOptionSession {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  isCurrent: boolean;
+  status: AcademicSessionStatus;
+}
+
+export interface PromotionOptionsPayload {
+  currentSessionId: string | null;
+  academicSessions: PromotionOptionSession[];
+  classes: PromotionOptionClass[];
+}
+
+export interface PromotionEligibleStudentRecord {
+  id: string;
+  schoolId: string;
+  name: string;
+  studentCode: string;
+  email: string | null;
+  phone: string | null;
+  sourceEnrollment: {
+    id: string;
+    admissionNo: string;
+    rollNo: string | null;
+    status: string;
+    academicSession: {
+      id: string;
+      name: string;
+    };
+    academicClass: {
+      id: string;
+      name: string;
+    };
+    section: {
+      id: string;
+      name: string;
+    } | null;
+  } | null;
+}
+
+export interface PromotionPreviewStudentRecord {
+  id: string;
+  schoolId: string;
+  name: string;
+  studentCode: string;
+  email: string | null;
+  phone: string | null;
+}
+
+export interface PromotionPreviewEnrollmentRecord {
+  id: string;
+  admissionNo: string;
+  rollNo: string | null;
+  status: string;
+  academicSession: {
+    id: string;
+    name: string;
+  };
+  academicClass: {
+    id: string;
+    name: string;
+  };
+  section: {
+    id: string;
+    name: string;
+  } | null;
+}
+
+export interface PromotionPreviewTargetRecord {
+  academicSession: {
+    id: string;
+    name: string;
+  };
+  academicClass: {
+    id: string;
+    name: string;
+  };
+  section: {
+    id: string;
+    name: string;
+  } | null;
+}
+
+export interface PromotionPreviewRecord {
+  student: PromotionPreviewStudentRecord | null;
+  currentEnrollment: PromotionPreviewEnrollmentRecord | null;
+  targetEnrollment: PromotionPreviewTargetRecord;
+  action: PromotionAction;
+  status: PromotionPreviewStatus;
+  message: string;
+}
+
+export interface PromotionPreviewSummary {
+  total: number;
+  valid: number;
+  skipped: number;
+  errors: number;
+}
+
+export interface PromotionPreviewPayload {
+  studentIds?: string[];
+  fromAcademicSessionId: string;
+  toAcademicSessionId: string;
+  fromClassId: string;
+  toClassId: string;
+  fromSectionId?: string;
+  toSectionId?: string;
+  action: PromotionAction;
+  schoolId?: string;
+}
+
+export interface PromotionPreviewResponse {
+  items: PromotionPreviewRecord[];
+  summary: PromotionPreviewSummary;
+}
+
+export interface PromotionRecord {
+  id: string;
+  schoolId: string;
+  action: PromotionAction;
+  remarks: string | null;
+  promotedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  student: {
+    id: string;
+    name: string;
+    studentCode: string;
+  };
+  fromAcademicSession: {
+    id: string;
+    name: string;
+  };
+  toAcademicSession: {
+    id: string;
+    name: string;
+  };
+  fromClass: {
+    id: string;
+    name: string;
+  };
+  toClass: {
+    id: string;
+    name: string;
+  };
+  fromSection: {
+    id: string;
+    name: string;
+  } | null;
+  toSection: {
+    id: string;
+    name: string;
+  } | null;
+  fromEnrollment: {
+    id: string;
+    admissionNo: string;
+    rollNo: string | null;
+  };
+  toEnrollment: {
+    id: string;
+    admissionNo: string;
+    rollNo: string | null;
+  };
+  promotedBy: {
+    id: string;
+    name: string;
+  } | null;
+}
+
+export interface PromoteStudentPayload {
+  studentId: string;
+  fromAcademicSessionId: string;
+  toAcademicSessionId: string;
+  fromClassId: string;
+  toClassId: string;
+  fromSectionId?: string;
+  toSectionId?: string;
+  fromEnrollmentId?: string;
+  action: PromotionAction;
+  remarks?: string;
+  schoolId?: string;
+}
+
+export interface BulkPromoteStudentsPayload {
+  studentIds: string[];
+  fromAcademicSessionId: string;
+  toAcademicSessionId: string;
+  fromClassId: string;
+  toClassId: string;
+  fromSectionId?: string;
+  toSectionId?: string;
+  action: PromotionAction;
+  remarks?: string;
+  schoolId?: string;
+}
+
+export interface BulkPromotionResult {
+  total: number;
+  promoted: number;
+  failed: number;
+  successes: PromotionRecord[];
+  failures: Array<{
+    studentId: string;
+    reason: string;
+  }>;
 }
 
 export function createQueryString(

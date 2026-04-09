@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { NotificationBell } from '@/components/dashboard/notification-bell';
 import { DashboardSidebar } from '@/components/dashboard/sidebar';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
@@ -11,12 +12,25 @@ const titles: Record<string, string> = {
   '/': 'Dashboard',
   '/dashboard': 'Dashboard',
   '/students': 'Students',
+  '/academic-sessions': 'Academic Sessions',
+  '/admissions': 'Admissions',
   '/attendance': 'Attendance',
+  '/promotions': 'Promotions',
+  '/parents': 'Parents',
   '/users': 'Users & Staff',
   '/fees': 'Fees',
   '/classes': 'Classes',
   '/sections': 'Sections',
   '/subjects': 'Subjects',
+  '/timetables': 'Timetables',
+  '/exam-date-sheets': 'Exam Date Sheets',
+  '/homework': 'Homework',
+  '/reports': 'Reports',
+  '/holidays': 'Holiday Calendar',
+  '/messages/inbox': 'Inbox',
+  '/messages/sent': 'Sent Messages',
+  '/messages/compose': 'Compose Message',
+  '/notices': 'Notice Board',
   '/exams': 'Exams & Results',
   '/settings': 'Settings',
 };
@@ -25,12 +39,25 @@ const descriptions: Record<string, string> = {
   '/': 'Track school performance, finances, academics, and staff operations in one view.',
   '/dashboard': 'Review the latest analytics, performance trends, and key activities.',
   '/students': 'Manage admissions, academic placement, and student lifecycle operations.',
+  '/academic-sessions': 'Create and manage school-specific academic year timelines securely.',
+  '/admissions': 'Track fresh applications, approvals, and student onboarding from one place.',
   '/attendance': 'Capture daily attendance, filters, and summaries with less friction.',
+  '/promotions': 'Manage student progression, detention, preview checks, and history safely.',
+  '/parents': 'Manage guardians, parent portal access, and linked children cleanly.',
   '/users': 'Manage staff access, role assignment, and administrative control.',
   '/fees': 'Track collection health, dues, and payment operations across the school.',
   '/classes': 'Build class structures, assign subjects, and manage academic setup.',
   '/sections': 'Configure sections, room details, and class organization.',
   '/subjects': 'Maintain subject catalog and curriculum mapping cleanly.',
+  '/timetables': 'Build weekly class schedules and track teacher allocations clearly.',
+  '/exam-date-sheets': 'Plan exam schedules by class with printable academic date sheets.',
+  '/homework': 'Assign and review classroom work with due dates and class targeting.',
+  '/reports': 'Review attendance, fees, and result performance with printable summaries.',
+  '/holidays': 'Track upcoming school breaks, events, and academic calendar dates.',
+  '/messages/inbox': 'Review incoming communication and unread updates.',
+  '/messages/sent': 'Track outgoing messages and delivery visibility.',
+  '/messages/compose': 'Send role-safe messages inside your school workspace.',
+  '/notices': 'Publish targeted school announcements for dashboards and portals.',
   '/exams': 'Coordinate exams, marks entry, and result visibility from one place.',
   '/settings': 'Customize school profile, branding, and enabled modules.',
 };
@@ -51,6 +78,16 @@ export default function DashboardLayout({
 
     if (!token) {
       router.replace('/login');
+      return;
+    }
+
+    if (storedSession?.user.role === 'PARENT') {
+      router.replace('/parent');
+      return;
+    }
+
+    if (storedSession?.user.role === 'STUDENT') {
+      router.replace('/student');
       return;
     }
 
@@ -91,6 +128,7 @@ export default function DashboardLayout({
             <p>{descriptions[pathname] ?? 'Operate your school from a refined admin workspace.'}</p>
           </div>
           <div className="page-header-meta">
+            <NotificationBell />
             {session?.user.role ? (
               <Badge tone="info">{session.user.role.replace('_', ' ')}</Badge>
             ) : null}
