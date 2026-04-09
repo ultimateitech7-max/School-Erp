@@ -251,6 +251,9 @@ export class ParentsService {
     const normalizedEmail =
       dto.email !== undefined ? dto.email?.trim().toLowerCase() ?? null : parent.email;
     const phone = dto.phone?.trim() ?? parent.phone;
+    const hashedPortalPassword = dto.portalPassword
+      ? await bcrypt.hash(dto.portalPassword, 10)
+      : null;
 
     const updatedParent = await this.prisma.$transaction(async (tx) => {
       let userId = parent.userId;
@@ -279,9 +282,9 @@ export class ParentsService {
             fullName,
             email: normalizedEmail ?? undefined,
             phone,
-            ...(dto.portalPassword
+            ...(hashedPortalPassword
               ? {
-                  passwordHash: await bcrypt.hash(dto.portalPassword, 10),
+                  passwordHash: hashedPortalPassword,
                   passwordChangedAt: new Date(),
                 }
               : {}),
@@ -314,7 +317,7 @@ export class ParentsService {
             roleId: parentRole.id,
             fullName,
             email: normalizedEmail,
-            passwordHash: await bcrypt.hash(dto.portalPassword, 10),
+            passwordHash: hashedPortalPassword!,
             phone,
             userType: UserType.PARENT,
             designation: 'Parent',
@@ -344,6 +347,9 @@ export class ParentsService {
         },
         include: parentInclude,
       });
+    }, {
+      maxWait: 10_000,
+      timeout: 60_000,
     });
 
     await this.auditService.write({

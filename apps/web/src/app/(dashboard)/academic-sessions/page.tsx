@@ -11,6 +11,7 @@ import { AcademicSessionForm } from './components/AcademicSessionForm';
 import { AcademicSessionTable } from './components/AcademicSessionTable';
 import { Banner } from '@/components/ui/banner';
 import { Badge } from '@/components/ui/badge';
+import { useSchoolScope } from '@/hooks/use-school-scope';
 import { getStoredAuthSession } from '@/utils/auth-storage';
 import {
   apiFetch,
@@ -62,10 +63,12 @@ export default function AcademicSessionsPage() {
   const [page, setPage] = useState(1);
   const [reloadIndex, setReloadIndex] = useState(0);
   const authSession = useMemo(() => getStoredAuthSession(), []);
+  const { selectedSchoolId } = useSchoolScope();
 
   const canCreate =
     authSession?.user.role === 'SCHOOL_ADMIN' ||
-    Boolean(authSession?.user.schoolId);
+    Boolean(authSession?.user.schoolId) ||
+    Boolean(selectedSchoolId);
 
   useEffect(() => {
     startTransition(() => {

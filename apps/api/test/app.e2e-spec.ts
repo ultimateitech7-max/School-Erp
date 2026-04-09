@@ -576,6 +576,21 @@ describe('School ERP API (e2e)', () => {
     createdTemporarySchoolId = response.body.school.id as string;
   });
 
+  it('GET /schools lists schools for super admin', async () => {
+    const response = await request(app.getHttpServer())
+      .get(`${apiPrefix}/schools`)
+      .query({
+        search: 'e2eschool',
+      })
+      .set('Authorization', `Bearer ${superAdminToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(Array.isArray(response.body.data)).toBe(true);
+    expect(response.body.data.some((school: { id: string }) => school.id === createdTemporarySchoolId)).toBe(true);
+    expect(response.body.meta.total).toBeGreaterThan(0);
+  });
+
   it('GET /modules/me returns enabled modules for the current school', async () => {
     const response = await request(app.getHttpServer())
       .get(`${apiPrefix}/modules/me`)

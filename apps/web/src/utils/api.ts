@@ -1,4 +1,9 @@
-import { clearAuthSession, getAccessToken } from './auth-storage';
+import {
+  clearAuthSession,
+  getAccessToken,
+  getSelectedSchoolId,
+  getStoredAuthSession,
+} from './auth-storage';
 
 export const API_URL = resolveApiUrl();
 
@@ -111,6 +116,38 @@ export interface UserRoleOption {
 export interface UserSchoolOption {
   id: string;
   name: string;
+}
+
+export interface SchoolRecord {
+  id: string;
+  name: string;
+  schoolCode: string;
+  subdomain: string;
+  email: string | null;
+  phone: string | null;
+  timezone: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  adminUser?: {
+    id: string;
+    name: string;
+    email: string;
+    role: UserRole;
+    roleCode: string;
+    schoolId: string | null;
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
+}
+
+export interface SchoolFormPayload {
+  name: string;
+  code: string;
+  adminName: string;
+  adminEmail: string;
+  adminPassword: string;
 }
 
 export interface UserOptionsPayload {
@@ -1822,9 +1859,10 @@ export async function apiFetch<T>(
   options: ApiFetchOptions = {},
 ): Promise<T> {
   const { auth = true, headers, ...init } = options;
+  const scopedRequest = auth ? applySelectedSchoolScope(path, init) : { path, init };
   const requestHeaders = new Headers(headers);
 
-  if (!requestHeaders.has('Content-Type') && init.body) {
+  if (!requestHeaders.has('Content-Type') && scopedRequest.init.body) {
     requestHeaders.set('Content-Type', 'application/json');
   }
 
@@ -1836,8 +1874,8 @@ export async function apiFetch<T>(
     }
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    ...init,
+  const response = await fetch(`${API_URL}${scopedRequest.path}`, {
+    ...scopedRequest.init,
     headers: requestHeaders,
     cache: 'no-store',
   });
@@ -1874,4 +1912,100 @@ function resolveApiUrl() {
   }
 
   throw new Error('NEXT_PUBLIC_API_URL is not configured.');
+}
+
+function applySelectedSchoolScope(
+  path: string,
+  init: RequestInit,
+): { path: string; init: RequestInit } {
+  const session = getStoredAuthSession();
+
+  if (session?.user.role !== 'SUPER_ADMIN') {
+    return { path, init };
+  }
+
+  const selectedSchoolId = getSelectedSchoolId();
+
+  if (!selectedSchoolId || !shouldAttachSchoolScope(path)) {
+    return { path, init };
+  }
+
+  const [pathname, queryString = ''] = path.split('?');
+  const searchParams = new URLSearchParams(queryString);
+
+  if (!searchParams.has('schoolId')) {
+    searchParams.set('schoolId', selectedSchoolId);
+  }
+
+  const scopedPath = searchParams.toString()
+    ? `${pathname}?${searchParams.toString()}`
+    : pathname;
+
+  if (!init.body || typeof init.body !== 'string') {
+    return {
+      path: scopedPath,
+      init,
+    };
+  }
+
+  try {
+    const parsedBody = JSON.parse(init.body) as Record<string, unknown>;
+
+    if (!('schoolId' in parsedBody)) {
+      parsedBody.schoolId = selectedSchoolId;
+    }
+
+    return {
+      path: scopedPath,
+      init: {
+        ...init,
+        body: JSON.stringify(parsedBody),
+      },
+    };
+  } catch {
+    return {
+      path: scopedPath,
+      init,
+    };
+  }
+}
+
+function shouldAttachSchoolScope(path: string) {
+  const normalizedPath = path.split('?')[0];
+  const schoolScopedPrefixes = [
+    '/academic-sessions',
+    '/admissions',
+    '/attendance',
+    '/classes',
+    '/dashboard',
+    '/exam-date-sheets',
+    '/exams',
+    '/fees',
+    '/holidays',
+    '/homework',
+    '/messages',
+    '/notices',
+    '/parents',
+    '/promotions',
+    '/reports',
+    '/sections',
+    '/settings',
+    '/students',
+    '/subjects',
+    '/timetables',
+    '/users',
+  ];
+  const excludedPrefixes = ['/auth', '/health', '/notifications', '/parent', '/schools', '/student'];
+
+  if (excludedPrefixes.some((prefix) => isMatchingRoutePrefix(normalizedPath, prefix))) {
+    return false;
+  }
+
+  return schoolScopedPrefixes.some((prefix) =>
+    isMatchingRoutePrefix(normalizedPath, prefix),
+  );
+}
+
+function isMatchingRoutePrefix(path: string, prefix: string) {
+  return path === prefix || path.startsWith(`${prefix}/`);
 }

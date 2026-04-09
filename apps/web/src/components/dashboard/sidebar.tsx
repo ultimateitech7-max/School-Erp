@@ -29,6 +29,9 @@ const baseNavItems = [
   { href: '/students', label: 'Students', icon: StudentsIcon },
   { href: '/attendance', label: 'Attendance', icon: AttendanceIcon },
 ];
+const superAdminNavItems = [
+  { href: '/schools', label: 'Schools', icon: UsersIcon },
+];
 const adminNavItems = [
   { href: '/academic-sessions', label: 'Academic Sessions', icon: AcademicIcon },
   { href: '/admissions', label: 'Admissions', icon: StudentsIcon },
@@ -68,8 +71,10 @@ export function DashboardSidebar() {
 
   const navItems = useMemo(
     () =>
-      session?.user.role === 'SUPER_ADMIN' || session?.user.role === 'SCHOOL_ADMIN'
-        ? [...baseNavItems, ...adminNavItems]
+      session?.user.role === 'SUPER_ADMIN'
+        ? [...baseNavItems, ...superAdminNavItems, ...adminNavItems]
+        : session?.user.role === 'SCHOOL_ADMIN'
+          ? [...baseNavItems, ...adminNavItems]
         : baseNavItems,
     [session?.user.role],
   );

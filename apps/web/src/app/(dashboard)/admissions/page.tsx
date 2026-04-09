@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Field, Select, Textarea } from '@/components/ui/field';
 import { Modal } from '@/components/ui/modal';
 import { Spinner } from '@/components/ui/spinner';
+import { useSchoolScope } from '@/hooks/use-school-scope';
 import { getStoredAuthSession } from '@/utils/auth-storage';
 import {
   apiFetch,
@@ -126,6 +127,7 @@ export default function AdmissionsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [statusDraft, setStatusDraft] = useState<AdmissionApplicationStatus>('INQUIRY');
   const [remarksDraft, setRemarksDraft] = useState('');
+  const { selectedSchoolId } = useSchoolScope();
 
   useEffect(() => {
     startTransition(() => {
@@ -164,7 +166,10 @@ export default function AdmissionsPage() {
       });
   }, [deferredSearch, page, reloadIndex, statusFilter]);
 
-  const canCreate = authSession?.user.role === 'SCHOOL_ADMIN' || Boolean(authSession?.user.schoolId);
+  const canCreate =
+    authSession?.user.role === 'SCHOOL_ADMIN' ||
+    Boolean(authSession?.user.schoolId) ||
+    Boolean(selectedSchoolId);
   const hasActiveFilters = Boolean(deferredSearch || statusFilter);
   const nextStatuses = selectedAdmission ? getNextStatuses(selectedAdmission.status) : [];
   const canEnrollSelectedAdmission =
