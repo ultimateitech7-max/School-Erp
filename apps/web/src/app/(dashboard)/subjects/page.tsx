@@ -3,6 +3,7 @@
 import { startTransition, useDeferredValue, useEffect, useState } from 'react';
 import { SubjectForm } from './components/SubjectForm';
 import { SubjectTable } from './components/SubjectTable';
+import { CsvDownloadButton } from '@/components/ui/csv-download-button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   apiFetch,
@@ -15,6 +16,8 @@ import {
   type UserStatus,
 } from '@/utils/api';
 import { getStoredAuthSession, type AuthSession } from '@/utils/auth-storage';
+import { subjectCsvColumns } from '@/utils/csv-exporters';
+import { buildCsvFilename, exportPaginatedApiCsv } from '@/utils/csv';
 
 const initialMeta: ApiMeta = {
   page: 1,
@@ -168,6 +171,31 @@ export default function SubjectsPage() {
     }
   };
 
+  const handleExportCsv = async () => {
+    try {
+      const count = await exportPaginatedApiCsv<SubjectRecord>({
+        path: '/subjects',
+        params: {
+          search: deferredSearch || undefined,
+          subjectType: typeFilter || undefined,
+          isActive: statusFilter ? statusFilter === 'ACTIVE' : undefined,
+        },
+        columns: subjectCsvColumns,
+        filename: buildCsvFilename('subjects'),
+      });
+
+      setMessage({
+        type: 'success',
+        text: `Downloaded ${count} subject record${count === 1 ? '' : 's'} as CSV.`,
+      });
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Failed to export subjects.',
+      });
+    }
+  };
+
   if (!sessionLoaded) {
     return (
       <section className="card panel">
@@ -249,6 +277,11 @@ export default function SubjectsPage() {
               Reset
             </button>
           ) : null}
+          <CsvDownloadButton
+            label="Download CSV"
+            loadingLabel="Exporting..."
+            onDownload={handleExportCsv}
+          />
         </div>
       </section>
 

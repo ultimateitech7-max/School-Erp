@@ -19,6 +19,7 @@ const weekdays: TimetableDayOfWeek[] = [
 interface TimetableGridProps {
   entries: TimetableEntryRecord[];
   loading: boolean;
+  showActions?: boolean;
   selectedEntryId?: string | null;
   deletingEntryId?: string | null;
   onSelect?: (entry: TimetableEntryRecord) => void;
@@ -28,6 +29,7 @@ interface TimetableGridProps {
 export function TimetableGrid({
   entries,
   loading,
+  showActions = true,
   selectedEntryId,
   deletingEntryId,
   onSelect,
@@ -93,6 +95,7 @@ export function TimetableGrid({
               onSelect={onSelect}
               period={period}
               selectedEntryId={selectedEntryId}
+              showActions={showActions}
             />
           ))}
         </div>
@@ -108,6 +111,7 @@ function FragmentRow({
   deletingEntryId,
   onSelect,
   onDelete,
+  showActions,
 }: {
   period: number;
   dayEntries: Array<TimetableEntryRecord | undefined>;
@@ -115,6 +119,7 @@ function FragmentRow({
   deletingEntryId?: string | null;
   onSelect?: (entry: TimetableEntryRecord) => void;
   onDelete?: (entry: TimetableEntryRecord) => void;
+  showActions: boolean;
 }) {
   return (
     <>
@@ -145,25 +150,27 @@ function FragmentRow({
                   {entry.section?.name ?? entry.class.name}
                 </small>
               </button>
-              <div className="timetable-grid-actions">
-                <Button
-                  onClick={() => onSelect?.(entry)}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  Edit
-                </Button>
-                <Button
-                  disabled={deletingEntryId === entry.id}
-                  onClick={() => onDelete?.(entry)}
-                  size="sm"
-                  type="button"
-                  variant="danger"
-                >
-                  {deletingEntryId === entry.id ? 'Removing...' : 'Delete'}
-                </Button>
-              </div>
+              {showActions ? (
+                <div className="timetable-grid-actions">
+                  <Button
+                    onClick={() => onSelect?.(entry)}
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    disabled={deletingEntryId === entry.id}
+                    onClick={() => onDelete?.(entry)}
+                    size="sm"
+                    type="button"
+                    variant="danger"
+                  >
+                    {deletingEntryId === entry.id ? 'Removing...' : 'Delete'}
+                  </Button>
+                </div>
+              ) : null}
             </>
           ) : (
             <span className="muted-text">Free</span>

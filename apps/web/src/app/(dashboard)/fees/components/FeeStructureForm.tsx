@@ -6,6 +6,7 @@ import type {
   FeeClassOption,
   FeeFrequency,
   FeeStructureFormPayload,
+  FeeStructureRecord,
   FeesOptionsPayload,
 } from '@/utils/api';
 
@@ -13,6 +14,8 @@ interface FeeStructureFormProps {
   options: FeesOptionsPayload;
   submitting: boolean;
   onSubmit: (payload: FeeStructureFormPayload) => Promise<void>;
+  initialValue?: FeeStructureRecord | null;
+  onCancel?: () => void;
 }
 
 interface FeeStructureFormState {
@@ -43,15 +46,32 @@ export function FeeStructureForm({
   options,
   submitting,
   onSubmit,
+  initialValue,
+  onCancel,
 }: FeeStructureFormProps) {
   const [form, setForm] = useState<FeeStructureFormState>(initialFormState);
 
   useEffect(() => {
+    if (initialValue) {
+      setForm({
+        name: initialValue.name,
+        feeCode: initialValue.feeCode,
+        classId: initialValue.classId ?? '',
+        category: initialValue.category,
+        frequency: initialValue.frequency,
+        amount: String(initialValue.amount),
+        dueDate: initialValue.dueDate?.slice(0, 10) ?? '',
+        lateFeePerDay: String(initialValue.lateFeePerDay),
+        isOptional: initialValue.isOptional,
+      });
+      return;
+    }
+
     setForm((current) => ({
       ...current,
       classId: current.classId || options.classes[0]?.id || '',
     }));
-  }, [options.classes]);
+  }, [initialValue, options.classes]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -69,17 +89,19 @@ export function FeeStructureForm({
       isOptional: form.isOptional,
     });
 
-    setForm({
-      ...initialFormState,
-      classId: options.classes[0]?.id || '',
-    });
+    if (!initialValue) {
+      setForm({
+        ...initialFormState,
+        classId: options.classes[0]?.id || '',
+      });
+    }
   };
 
   return (
     <section className="card panel academic-form-panel">
       <div className="panel-heading">
         <div>
-          <h2>Create Fee Structure</h2>
+          <h2>{initialValue ? 'Edit Fee Structure' : 'Create Fee Structure'}</h2>
           <p className="muted-text">Define fee templates for classes and sessions.</p>
         </div>
       </div>
@@ -219,9 +241,22 @@ export function FeeStructureForm({
           <span>Optional fee</span>
         </label>
 
-        <button className="primary-button" disabled={submitting} type="submit">
-          {submitting ? 'Creating...' : 'Create Structure'}
-        </button>
+        <div className="form-actions">
+          {initialValue && onCancel ? (
+            <button className="secondary-button" onClick={onCancel} type="button">
+              Cancel
+            </button>
+          ) : null}
+          <button className="primary-button" disabled={submitting} type="submit">
+            {submitting
+              ? initialValue
+                ? 'Updating...'
+                : 'Creating...'
+              : initialValue
+                ? 'Update Structure'
+                : 'Create Structure'}
+          </button>
+        </div>
       </form>
     </section>
   );

@@ -15,6 +15,8 @@ import { JwtUser } from '../auth/strategies/jwt.strategy';
 import { StudentsService } from '../students/students.service';
 import { AdmissionQueryDto } from './dto/admission-query.dto';
 import { CreateAdmissionDto } from './dto/create-admission.dto';
+import { CreatePublicAdmissionInquiryDto } from './dto/create-public-admission-inquiry.dto';
+import { EnrollAdmissionDto } from './dto/enroll-admission.dto';
 import { UpdateAdmissionStatusDto } from './dto/update-admission-status.dto';
 
 const DEFAULT_PAGE = 1;
@@ -102,6 +104,85 @@ export class AdmissionsService {
     return {
       success: true,
       message: 'Admission application created successfully.',
+      data: this.serializeAdmission(application),
+    };
+  }
+
+  async findPublicSchoolOptions() {
+    const schools = await this.prisma.school.findMany({
+      where: {
+        isActive: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        schoolCode: true,
+      },
+      orderBy: [
+        {
+          name: 'asc',
+        },
+      ],
+    });
+
+    return {
+      success: true,
+      message: 'Admission inquiry schools fetched successfully.',
+      data: schools,
+    };
+  }
+
+  async createPublicInquiry(dto: CreatePublicAdmissionInquiryDto) {
+    const school = await this.prisma.school.findFirst({
+      where: {
+        id: dto.schoolId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!school) {
+      throw new NotFoundException('Selected school is not available for inquiries.');
+    }
+
+    const dob = this.parseDate(dto.dob, 'dob');
+
+    const application = await this.prisma.admissionApplication.create({
+      data: {
+        schoolId: school.id,
+        studentName: dto.studentName.trim(),
+        fatherName: dto.fatherName.trim(),
+        motherName: dto.motherName.trim(),
+        phone: dto.phone.trim(),
+        email: dto.email?.trim().toLowerCase() ?? null,
+        address: dto.address.trim(),
+        classApplied: dto.classApplied.trim(),
+        previousSchool: dto.previousSchool?.trim() ?? null,
+        dob,
+        status: AdmissionApplicationStatus.INQUIRY,
+        remarks: dto.remarks?.trim() ?? null,
+      },
+      include: admissionApplicationInclude,
+    });
+
+    await this.auditService.write({
+      action: 'admissions.public_inquiry.create',
+      entity: 'admission_application',
+      entityId: application.id,
+      schoolId: school.id,
+      metadata: {
+        source: 'public_apply_page',
+        studentName: application.studentName,
+        classApplied: application.classApplied,
+        status: application.status,
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Your admission inquiry has been submitted successfully.',
       data: this.serializeAdmission(application),
     };
   }
@@ -218,7 +299,11 @@ export class AdmissionsService {
     };
   }
 
-  async enroll(currentUser: JwtUser, id: string) {
+  async enroll(
+    currentUser: JwtUser,
+    id: string,
+    dto: EnrollAdmissionDto = {},
+  ) {
     const admission = await this.getAdmissionByIdScoped(
       id,
       this.resolveMutationSchoolScope(currentUser),
@@ -235,6 +320,10 @@ export class AdmissionsService {
         'Only approved admission applications can be enrolled.',
       );
     }
+
+    const normalizedEnrollmentEmail =
+      dto.email?.trim().toLowerCase() ?? admission.email ?? undefined;
+    const normalizedPortalPassword = dto.portalPassword?.trim() ?? undefined;
 
     const result = await this.prisma.$transaction(
       async (tx) => {
@@ -329,12 +418,13 @@ export class AdmissionsService {
             })
           : await this.studentsService.createStudentTransactional(tx, admission.schoolId, {
               name: admission.studentName,
-              email: admission.email ?? undefined,
+              email: normalizedEnrollmentEmail,
               phone: admission.phone,
               dateOfBirth: admission.dob.toISOString().slice(0, 10),
               joinedOn: new Date().toISOString().slice(0, 10),
               classId: targetClass.id,
               sessionId: currentSession.id,
+              portalPassword: normalizedPortalPassword,
             });
 
         if (existingStudent) {
@@ -379,6 +469,11 @@ export class AdmissionsService {
           data: {
             status: AdmissionApplicationStatus.ENROLLED,
             studentId: createdStudent.id,
+            ...(normalizedEnrollmentEmail
+              ? {
+                  email: normalizedEnrollmentEmail,
+                }
+              : {}),
             remarks:
               admission.remarks?.trim()
                 ? `${admission.remarks.trim()}\nEnrolled on ${new Date().toISOString()}.`

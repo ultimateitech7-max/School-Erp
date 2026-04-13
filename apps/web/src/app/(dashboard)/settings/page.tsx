@@ -3,10 +3,14 @@
 import { useEffect, useState } from 'react';
 import { BrandingForm } from './components/BrandingForm';
 import { ModuleToggleList } from './components/ModuleToggleList';
+import { ReceiptTemplateForm } from './components/ReceiptTemplateForm';
 import { SchoolSettingsForm } from './components/SchoolSettingsForm';
+import { Spinner } from '@/components/ui/spinner';
 import {
   apiFetch,
   type ApiSuccessResponse,
+  type FeeReceiptTemplateFormPayload,
+  type FeeReceiptTemplateRecord,
   type SchoolBrandingFormPayload,
   type SchoolBrandingRecord,
   type SchoolModuleToggleRecord,
@@ -20,10 +24,12 @@ export default function SettingsPage() {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [schoolSettings, setSchoolSettings] = useState<SchoolSettingsRecord | null>(null);
   const [branding, setBranding] = useState<SchoolBrandingRecord | null>(null);
+  const [receiptTemplate, setReceiptTemplate] = useState<FeeReceiptTemplateRecord | null>(null);
   const [modules, setModules] = useState<SchoolModuleToggleRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingSchool, setSavingSchool] = useState(false);
   const [savingBranding, setSavingBranding] = useState(false);
+  const [savingReceiptTemplate, setSavingReceiptTemplate] = useState(false);
   const [savingModules, setSavingModules] = useState(false);
   const [message, setMessage] = useState<{
     type: 'success' | 'error';
@@ -41,15 +47,21 @@ export default function SettingsPage() {
 
     setLoading(true);
 
+    const canManageModules = session.user.role === 'SUPER_ADMIN';
+
     void Promise.all([
       apiFetch<ApiSuccessResponse<SchoolSettingsRecord>>('/settings/school'),
       apiFetch<ApiSuccessResponse<SchoolBrandingRecord>>('/settings/branding'),
-      apiFetch<ApiSuccessResponse<SchoolModuleToggleRecord[]>>('/settings/modules'),
+      apiFetch<ApiSuccessResponse<FeeReceiptTemplateRecord>>('/settings/receipt-template'),
+      canManageModules
+        ? apiFetch<ApiSuccessResponse<SchoolModuleToggleRecord[]>>('/settings/modules')
+        : Promise.resolve(null),
     ])
-      .then(([schoolResponse, brandingResponse, modulesResponse]) => {
+      .then(([schoolResponse, brandingResponse, receiptTemplateResponse, modulesResponse]) => {
         setSchoolSettings(schoolResponse.data);
         setBranding(brandingResponse.data);
-        setModules(modulesResponse.data);
+        setReceiptTemplate(receiptTemplateResponse.data);
+        setModules(modulesResponse?.data ?? []);
       })
       .catch((error) => {
         setMessage({
@@ -123,6 +135,44 @@ export default function SettingsPage() {
     }
   };
 
+  const handleUploadBrandingLogo = async (file: File) => {
+    setSavingBranding(true);
+    setMessage(null);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await apiFetch<ApiSuccessResponse<SchoolBrandingRecord>>(
+        '/settings/branding/logo',
+        {
+          method: 'POST',
+          body: formData,
+        },
+      );
+
+      setBranding(response.data);
+      setMessage({
+        type: 'success',
+        text: response.message,
+      });
+
+      return response.data;
+    } catch (error) {
+      const text =
+        error instanceof Error ? error.message : 'Failed to upload branding logo.';
+
+      setMessage({
+        type: 'error',
+        text,
+      });
+
+      throw error;
+    } finally {
+      setSavingBranding(false);
+    }
+  };
+
   const handleSaveModules = async (payload: SchoolModulesFormPayload) => {
     setSavingModules(true);
     setMessage(null);
@@ -152,14 +202,48 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSaveReceiptTemplate = async (
+    payload: FeeReceiptTemplateFormPayload,
+  ) => {
+    setSavingReceiptTemplate(true);
+    setMessage(null);
+
+    try {
+      const response = await apiFetch<ApiSuccessResponse<FeeReceiptTemplateRecord>>(
+        '/settings/receipt-template',
+        {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+        },
+      );
+
+      setReceiptTemplate(response.data);
+      setMessage({
+        type: 'success',
+        text: response.message,
+      });
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text:
+          error instanceof Error
+            ? error.message
+            : 'Failed to update receipt template.',
+      });
+    } finally {
+      setSavingReceiptTemplate(false);
+    }
+  };
+
   const canManageSettings =
     session?.user.role === 'SUPER_ADMIN' ||
     session?.user.role === 'SCHOOL_ADMIN';
+  const canManageModules = session?.user.role === 'SUPER_ADMIN';
 
   if (!session) {
     return (
       <section className="card panel">
-        <p>Loading session...</p>
+        <Spinner label="Loading settings session..." />
       </section>
     );
   }
@@ -173,10 +257,10 @@ export default function SettingsPage() {
     );
   }
 
-  if (loading || !schoolSettings || !branding) {
+  if (loading || !schoolSettings || !branding || !receiptTemplate) {
     return (
       <section className="card panel">
-        <p>Loading settings...</p>
+        <Spinner label="Loading settings..." />
       </section>
     );
   }
@@ -201,14 +285,25 @@ export default function SettingsPage() {
           initialValue={branding}
           isSubmitting={savingBranding}
           onSubmit={handleSaveBranding}
+          onUploadLogo={handleUploadBrandingLogo}
         />
       </div>
 
-      <ModuleToggleList
-        isSubmitting={savingModules}
-        modules={modules}
-        onSubmit={handleSaveModules}
+      <ReceiptTemplateForm
+        branding={branding}
+        initialValue={receiptTemplate}
+        isSubmitting={savingReceiptTemplate}
+        onSubmit={handleSaveReceiptTemplate}
+        schoolSettings={schoolSettings}
       />
+
+      {canManageModules ? (
+        <ModuleToggleList
+          isSubmitting={savingModules}
+          modules={modules}
+          onSubmit={handleSaveModules}
+        />
+      ) : null}
     </div>
   );
 }

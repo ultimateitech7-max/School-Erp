@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { Banner } from '@/components/ui/banner';
 import { Badge } from '@/components/ui/badge';
+import { CsvDownloadButton } from '@/components/ui/csv-download-button';
 import { Field, Input, Select } from '@/components/ui/field';
 import {
   apiFetch,
@@ -19,6 +20,8 @@ import {
   type ExamDateSheetOptionsPayload,
   type ExamDateSheetRecord,
 } from '@/utils/api';
+import { examDateSheetCsvColumns } from '@/utils/csv-exporters';
+import { buildCsvFilename, exportPaginatedApiCsv } from '@/utils/csv';
 import { ExamDateSheetForm } from './components/ExamDateSheetForm';
 import { ExamDateSheetTable } from './components/ExamDateSheetTable';
 
@@ -43,6 +46,8 @@ export default function ExamDateSheetsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [page, setPage] = useState(1);
   const [reloadIndex, setReloadIndex] = useState(0);
+  const [editingItem, setEditingItem] = useState<ExamDateSheetRecord | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const deferredSearch = useDeferredValue(searchInput);
 
@@ -105,24 +110,30 @@ export default function ExamDateSheetsPage() {
 
   const classOptions = useMemo(() => options?.classes ?? [], [options?.classes]);
 
-  const handleCreate = async (payload: ExamDateSheetFormPayload) => {
+  const handleCreateOrUpdate = async (payload: ExamDateSheetFormPayload) => {
     setSubmitting(true);
     setMessage(null);
 
     try {
-      const response = await apiFetch<ApiSuccessResponse<ExamDateSheetRecord>>(
-        '/exam-date-sheets',
-        {
-          method: 'POST',
-          body: JSON.stringify(payload),
-        },
-      );
+      const response = editingItem
+        ? await apiFetch<ApiSuccessResponse<ExamDateSheetRecord>>(
+            `/exam-date-sheets/${editingItem.id}`,
+            {
+              method: 'PATCH',
+              body: JSON.stringify(payload),
+            },
+          )
+        : await apiFetch<ApiSuccessResponse<ExamDateSheetRecord>>('/exam-date-sheets', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          });
 
       setMessage({
         type: 'success',
         text: response.message,
       });
       setClassId(payload.classId);
+      setEditingItem(null);
       setReloadIndex((current) => current + 1);
     } catch (error) {
       setMessage({
@@ -130,10 +141,45 @@ export default function ExamDateSheetsPage() {
         text:
           error instanceof Error
             ? error.message
-            : 'Failed to create exam date sheet.',
+            : editingItem
+              ? 'Failed to update exam date sheet.'
+              : 'Failed to create exam date sheet.',
       });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Delete this exam date sheet?')) {
+      return;
+    }
+
+    setDeletingId(id);
+    setMessage(null);
+
+    try {
+      const response = await apiFetch<ApiSuccessResponse<{ id: string }>>(
+        `/exam-date-sheets/${id}`,
+        {
+          method: 'DELETE',
+        },
+      );
+
+      setMessage({
+        type: 'success',
+        text: response.message,
+      });
+      setEditingItem((current) => (current?.id === id ? null : current));
+      setReloadIndex((current) => current + 1);
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text:
+          error instanceof Error ? error.message : 'Failed to delete exam date sheet.',
+      });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -164,6 +210,37 @@ export default function ExamDateSheetsPage() {
       });
     } finally {
       setPublishingId(null);
+    }
+  };
+
+  const handleExportCsv = async () => {
+    try {
+      const count = await exportPaginatedApiCsv<ExamDateSheetRecord>({
+        path: '/exam-date-sheets',
+        params: {
+          classId: classId || undefined,
+          isPublished:
+            publishedFilter === ''
+              ? undefined
+              : publishedFilter === 'published',
+          search: deferredSearch || undefined,
+        },
+        columns: examDateSheetCsvColumns,
+        filename: buildCsvFilename('exam-date-sheets'),
+      });
+
+      setMessage({
+        type: 'success',
+        text: `Downloaded ${count} exam date sheet${count === 1 ? '' : 's'} as CSV.`,
+      });
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text:
+          error instanceof Error
+            ? error.message
+            : 'Failed to export exam date sheets.',
+      });
     }
   };
 
@@ -211,21 +288,31 @@ export default function ExamDateSheetsPage() {
               <option value="published">Published</option>
             </Select>
           </Field>
+          <CsvDownloadButton
+            label="Download CSV"
+            loadingLabel="Exporting..."
+            onDownload={handleExportCsv}
+          />
         </div>
       </section>
 
       {message ? <Banner tone={message.type}>{message.text}</Banner> : null}
 
-      <div className="academic-grid">
+      <div className="dashboard-stack">
         <ExamDateSheetForm
-          onSubmit={handleCreate}
+          initialValue={editingItem}
+          onCancel={() => setEditingItem(null)}
+          onSubmit={handleCreateOrUpdate}
           options={options}
           submitting={submitting}
         />
         <ExamDateSheetTable
+          deletingId={deletingId}
           items={items}
           loading={loading}
           meta={meta}
+          onDelete={handleDelete}
+          onEdit={setEditingItem}
           onPageChange={setPage}
           onPublish={handlePublish}
           publishingId={publishingId}

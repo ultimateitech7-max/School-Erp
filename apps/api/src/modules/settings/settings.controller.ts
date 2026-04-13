@@ -2,10 +2,14 @@ import {
   Body,
   Controller,
   Get,
+  Post,
   Patch,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { RoleType } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
@@ -14,10 +18,14 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { JwtUser } from '../auth/strategies/jwt.strategy';
+import {
+  BrandingLogoUploadFile,
+  SettingsService,
+} from './settings.service';
 import { UpdateSchoolBrandingDto } from './dto/update-school-branding.dto';
+import { UpdateFeeReceiptTemplateDto } from './dto/update-fee-receipt-template.dto';
 import { UpdateSchoolModulesDto } from './dto/update-school-modules.dto';
 import { UpdateSchoolSettingsDto } from './dto/update-school-settings.dto';
-import { SettingsService } from './settings.service';
 
 @Controller('settings')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
@@ -61,7 +69,43 @@ export class SettingsController {
     return this.settingsService.updateBranding(currentUser, dto);
   }
 
+  @Get('receipt-template')
+  @Permissions('school.settings.manage')
+  findReceiptTemplate(
+    @CurrentUser() currentUser: JwtUser,
+    @Query('schoolId') schoolId?: string,
+  ) {
+    return this.settingsService.findFeeReceiptTemplate(currentUser, schoolId ?? null);
+  }
+
+  @Patch('receipt-template')
+  @Permissions('school.settings.manage')
+  updateReceiptTemplate(
+    @CurrentUser() currentUser: JwtUser,
+    @Body() dto: UpdateFeeReceiptTemplateDto,
+  ) {
+    return this.settingsService.updateFeeReceiptTemplate(currentUser, dto);
+  }
+
+  @Post('branding/logo')
+  @Permissions('school.settings.manage')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: 5 * 1024 * 1024,
+      },
+    }),
+  )
+  uploadBrandingLogo(
+    @CurrentUser() currentUser: JwtUser,
+    @UploadedFile() file?: BrandingLogoUploadFile,
+    @Query('schoolId') schoolId?: string,
+  ) {
+    return this.settingsService.uploadBrandingLogo(currentUser, file, schoolId ?? null);
+  }
+
   @Get('modules')
+  @Roles(RoleType.SUPER_ADMIN)
   @Permissions('school.settings.manage')
   findModules(
     @CurrentUser() currentUser: JwtUser,
@@ -71,6 +115,7 @@ export class SettingsController {
   }
 
   @Patch('modules')
+  @Roles(RoleType.SUPER_ADMIN)
   @Permissions('school.settings.manage')
   updateModules(
     @CurrentUser() currentUser: JwtUser,

@@ -97,6 +97,11 @@ export class ParentsService {
     const fullName = dto.fullName.trim();
     const phone = dto.phone.trim();
     const relationType = dto.relationType;
+    const studentLinks = Array.from(
+      new Map(
+        (dto.studentLinks ?? []).map((link) => [link.studentId, link]),
+      ).values(),
+    );
 
     const parent = await this.prisma.$transaction(async (tx) => {
       let createdUserId: string | null = null;
@@ -141,7 +146,7 @@ export class ParentsService {
         createdUserId = createdUser.id;
       }
 
-      return tx.parent.create({
+      const createdParent = await tx.parent.create({
         data: {
           schoolId,
           userId: createdUserId,
@@ -151,6 +156,43 @@ export class ParentsService {
           address: dto.address?.trim() ?? null,
           relationType,
           emergencyContact: dto.emergencyContact?.trim() ?? null,
+        },
+        include: parentInclude,
+      });
+
+      if (studentLinks.length) {
+        const students = await tx.student.findMany({
+          where: {
+            schoolId,
+            id: {
+              in: studentLinks.map((link) => link.studentId),
+            },
+            status: {
+              not: StudentStatus.INACTIVE,
+            },
+          },
+          select: {
+            id: true,
+          },
+        });
+
+        if (students.length !== studentLinks.length) {
+          throw new NotFoundException('One or more selected students were not found.');
+        }
+
+        await tx.parentStudent.createMany({
+          data: studentLinks.map((link) => ({
+            schoolId,
+            parentId: createdParent.id,
+            studentId: link.studentId,
+            relationType: link.relationType ?? relationType,
+          })),
+        });
+      }
+
+      return tx.parent.findUniqueOrThrow({
+        where: {
+          id: createdParent.id,
         },
         include: parentInclude,
       });
@@ -166,6 +208,7 @@ export class ParentsService {
         fullName: parent.fullName,
         relationType: parent.relationType,
         userId: parent.userId,
+        linkedStudents: parent.parentStudents.length,
       },
     });
 
@@ -508,9 +551,9 @@ export class ParentsService {
       throw new ForbiddenException('You do not have access to this resource.');
     }
 
-    const [noticesResponse, holidays] = await Promise.all([
+    const [noticesResponse, holidaysResponse] = await Promise.all([
       this.noticesService.findPortalNotices(currentUser),
-      this.holidaysService.getUpcomingForSchool(currentUser.schoolId!),
+      this.holidaysService.findPortal(currentUser),
     ]);
 
     const parent = await this.prisma.parent.findFirst({
@@ -619,8 +662,42 @@ export class ParentsService {
           };
         }),
         notices: noticesResponse.data,
-        holidays,
+        holidays: holidaysResponse.data,
       },
+    };
+  }
+
+  async getPortalBranding(currentUser: JwtUser) {
+    if (currentUser.role !== RoleType.PARENT) {
+      throw new ForbiddenException('You do not have access to this resource.');
+    }
+
+    if (!currentUser.schoolId) {
+      throw new ForbiddenException(
+        'This action requires a school-scoped authenticated user.',
+      );
+    }
+
+    const school = await this.prisma.school.findUnique({
+      where: {
+        id: currentUser.schoolId,
+      },
+      select: {
+        id: true,
+        schoolCode: true,
+        name: true,
+        settingsJson: true,
+      },
+    });
+
+    if (!school) {
+      throw new NotFoundException('School not found.');
+    }
+
+    return {
+      success: true,
+      message: 'Parent portal branding fetched successfully.',
+      data: this.serializePortalBranding(school),
     };
   }
 
@@ -667,6 +744,11 @@ export class ParentsService {
                 : 0,
           },
           bySession,
+          records: sessionId
+            ? history.attendanceSummary.records.filter(
+                (entry) => entry.session.id === sessionId,
+              )
+            : history.attendanceSummary.records,
         },
       },
     };
@@ -716,6 +798,16 @@ export class ParentsService {
           : history.paymentHistory,
       },
     };
+  }
+
+  async getParentFeeReceipt(
+    currentUser: JwtUser,
+    studentId: string,
+    paymentId: string,
+  ) {
+    await this.getLinkedStudentOrThrow(currentUser, studentId);
+
+    return this.studentsService.getParentFeeReceipt(currentUser, studentId, paymentId);
   }
 
   async getParentResults(currentUser: JwtUser, studentId: string, sessionId?: string | null) {
@@ -771,6 +863,25 @@ export class ParentsService {
           bySession,
         },
       },
+    };
+  }
+
+  async getParentExams(
+    currentUser: JwtUser,
+    studentId: string,
+    sessionId?: string | null,
+  ) {
+    const child = await this.getLinkedStudentOrThrow(currentUser, studentId);
+    const payload = await this.studentsService.getScopedStudentExamPayload(
+      child.id,
+      child.schoolId,
+      sessionId ?? null,
+    );
+
+    return {
+      success: true,
+      message: 'Parent exam detail fetched successfully.',
+      data: payload,
     };
   }
 
@@ -974,6 +1085,47 @@ export class ParentsService {
           : null,
       },
     };
+  }
+
+  private serializePortalBranding(school: {
+    id: string;
+    schoolCode: string;
+    name: string;
+    settingsJson: Prisma.JsonValue;
+  }) {
+    const settingsJson = this.getSettingsJson(school.settingsJson);
+    const branding = this.getBrandingSettings(settingsJson);
+
+    return {
+      schoolId: school.id,
+      schoolCode: school.schoolCode,
+      schoolName: school.name,
+      logoUrl: branding.logoUrl ?? null,
+      primaryColor: branding.primaryColor ?? null,
+      secondaryColor: branding.secondaryColor ?? null,
+      website: branding.website ?? null,
+      supportEmail: branding.supportEmail ?? null,
+    };
+  }
+
+  private getSettingsJson(value: Prisma.JsonValue) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {} as Record<string, any>;
+    }
+
+    return value as Record<string, any>;
+  }
+
+  private getBrandingSettings(settingsJson: Record<string, any>) {
+    if (
+      !settingsJson.branding ||
+      typeof settingsJson.branding !== 'object' ||
+      Array.isArray(settingsJson.branding)
+    ) {
+      return {} as Record<string, any>;
+    }
+
+    return settingsJson.branding as Record<string, any>;
   }
 
   private async getLinkedStudentOrThrow(currentUser: JwtUser, studentId: string) {

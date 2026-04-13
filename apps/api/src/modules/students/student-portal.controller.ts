@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { RoleType } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -12,6 +12,11 @@ import { StudentsService } from './students.service';
 @Roles(RoleType.STUDENT)
 export class StudentPortalController {
   constructor(private readonly studentsService: StudentsService) {}
+
+  @Get('branding')
+  getBranding(@CurrentUser() currentUser: JwtUser) {
+    return this.studentsService.getPortalBranding(currentUser);
+  }
 
   @Get('dashboard')
   getDashboard(@CurrentUser() currentUser: JwtUser) {
@@ -34,12 +39,28 @@ export class StudentPortalController {
     return this.studentsService.getPortalFees(currentUser, sessionId ?? null);
   }
 
+  @Get('fees/payments/:paymentId/receipt')
+  getFeeReceipt(
+    @CurrentUser() currentUser: JwtUser,
+    @Param('paymentId') paymentId: string,
+  ) {
+    return this.studentsService.getPortalFeeReceipt(currentUser, paymentId);
+  }
+
   @Get('results')
   getResults(
     @CurrentUser() currentUser: JwtUser,
     @Query('sessionId') sessionId?: string,
   ) {
     return this.studentsService.getPortalResults(currentUser, sessionId ?? null);
+  }
+
+  @Get('exams')
+  getExams(
+    @CurrentUser() currentUser: JwtUser,
+    @Query('sessionId') sessionId?: string,
+  ) {
+    return this.studentsService.getPortalExams(currentUser, sessionId ?? null);
   }
 
   @Get('homework')

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { NoticeIcon } from '@/components/ui/icons';
@@ -12,6 +12,7 @@ import {
 } from '@/utils/api';
 
 export function NotificationBell() {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<NotificationRecord[]>([]);
@@ -31,21 +32,24 @@ export function NotificationBell() {
       const response = await apiFetch<
         ApiSuccessResponse<NotificationRecord[], NotificationMeta>
       >('/notifications?page=1&limit=8');
-      setItems(response.data);
+      const unreadItems = response.data.filter((item) => !item.isRead);
+      setItems(unreadItems);
       setMeta(
         response.meta ?? {
           page: 1,
           limit: 8,
-          total: response.data.length,
-          unreadCount: response.data.filter((item) => !item.isRead).length,
+          total: unreadItems.length,
+          unreadCount: unreadItems.length,
         },
       );
+      return unreadItems;
     } catch (loadError) {
       setError(
         loadError instanceof Error
           ? loadError.message
           : 'Failed to load notifications.',
       );
+      return [];
     } finally {
       setLoading(false);
     }
@@ -54,6 +58,40 @@ export function NotificationBell() {
   useEffect(() => {
     void loadNotifications();
   }, []);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      if (!containerRef.current) {
+        return;
+      }
+
+      const target = event.target;
+
+      if (target instanceof Node && !containerRef.current.contains(target)) {
+        setOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [open]);
 
   const handleMarkRead = async (id: string) => {
     try {
@@ -87,13 +125,34 @@ export function NotificationBell() {
     }
   };
 
+  const handleMarkVisibleAsRead = async (visibleItems: NotificationRecord[]) => {
+    const unreadItems = visibleItems.filter((item) => !item.isRead);
+
+    if (!unreadItems.length) {
+      return;
+    }
+
+    await Promise.all(unreadItems.map((item) => handleMarkRead(item.id)));
+  };
+
+  const handleToggle = async () => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+
+    setOpen(true);
+    const visibleItems = await loadNotifications();
+    await handleMarkVisibleAsRead(visibleItems);
+  };
+
   return (
-    <div className="notification-bell">
+    <div className="notification-bell" ref={containerRef}>
       <button
         aria-expanded={open}
         aria-label="Notifications"
         className="notification-bell-button"
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => void handleToggle()}
         type="button"
       >
         <NoticeIcon />
@@ -136,11 +195,7 @@ export function NotificationBell() {
                 <button
                   className={`notification-item${item.isRead ? '' : ' notification-item-unread'}`}
                   key={item.id}
-                  onClick={() => {
-                    if (!item.isRead) {
-                      void handleMarkRead(item.id);
-                    }
-                  }}
+                  onClick={() => undefined}
                   type="button"
                 >
                   <div className="notification-item-head">

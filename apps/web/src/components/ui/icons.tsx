@@ -170,3 +170,17 @@ export const ReportIcon = createIcon(
     <path d="M16 17v-4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
   </>,
 );
+
+export const DownloadIcon = createIcon(
+  <>
+    <path d="M12 4v10" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+    <path
+      d="m8.5 10.5 3.5 3.5 3.5-3.5"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.8"
+    />
+    <path d="M5 19.5h14" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+  </>,
+);

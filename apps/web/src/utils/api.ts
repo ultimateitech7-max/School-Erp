@@ -7,6 +7,28 @@ import {
 
 export const API_URL = resolveApiUrl();
 
+export function resolveAssetUrl(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.trim();
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (/^https?:\/\//i.test(normalized)) {
+    return normalized;
+  }
+
+  if (normalized.startsWith('/')) {
+    return `${resolveApiOrigin()}${normalized}`;
+  }
+
+  return normalized;
+}
+
 interface ApiFetchOptions extends RequestInit {
   auth?: boolean;
 }
@@ -75,6 +97,7 @@ export type AdmissionApplicationStatus =
   | 'REJECTED';
 export type NoticeAudienceType = 'ALL' | 'STUDENTS' | 'PARENTS' | 'STAFF';
 export type HolidayType = 'HOLIDAY' | 'EVENT';
+export type HolidayAudience = 'ALL' | 'STAFF' | 'STUDENT';
 
 export interface ApiMeta {
   page: number;
@@ -195,6 +218,11 @@ export interface StudentRecord {
     id: string;
     name: string;
   } | null;
+  portalAccess: {
+    userId: string;
+    email: string;
+    isActive: boolean;
+  } | null;
   schoolId: string;
   createdAt: string;
   updatedAt: string;
@@ -223,6 +251,7 @@ export interface StudentFormPayload {
   admissionNo?: string;
   email?: string;
   phone?: string;
+  portalPassword?: string;
   gender?: 'MALE' | 'FEMALE' | 'OTHER';
   dateOfBirth?: string;
   classId?: string;
@@ -271,6 +300,17 @@ export interface StudentAttendanceHistorySessionRecord {
   percentage: number;
 }
 
+export interface StudentAttendanceDayRecord {
+  id: string;
+  date: string;
+  status: AttendanceStatus;
+  session: {
+    id: string;
+    name: string;
+    isCurrent: boolean;
+  };
+}
+
 export interface StudentAttendanceHistorySummary {
   overall: {
     totalDays: number;
@@ -281,6 +321,7 @@ export interface StudentAttendanceHistorySummary {
     percentage: number;
   };
   bySession: StudentAttendanceHistorySessionRecord[];
+  records: StudentAttendanceDayRecord[];
 }
 
 export interface StudentFeeHistorySessionRecord {
@@ -469,12 +510,20 @@ export interface FeeClassOption {
   id: string;
   name: string;
   classCode: string;
+  sections: Array<{
+    id: string;
+    name: string;
+  }>;
 }
 
 export interface FeeStudentOption {
   id: string;
   name: string;
   studentCode: string;
+  registrationNumber: string | null;
+  admissionNo: string | null;
+  classId: string | null;
+  sectionId: string | null;
 }
 
 export interface FeesOptionsPayload {
@@ -559,12 +608,18 @@ export interface StudentFeeRecord {
 }
 
 export interface AssignFeePayload {
-  studentId: string;
+  studentId?: string;
+  classId?: string;
+  sectionId?: string;
   feeStructureId: string;
   sessionId?: string;
   totalAmount?: number;
   concessionAmount?: number;
   dueDate?: string;
+}
+
+export interface FeeStructureMutationPayload extends FeeStructureFormPayload {
+  schoolId?: string;
 }
 
 export interface PaymentRecord {
@@ -588,6 +643,101 @@ export interface PaymentRecord {
   };
   createdAt: string;
   updatedAt: string;
+}
+
+export interface FeeReceiptTemplateCustomField {
+  label: string;
+  value: string;
+}
+
+export interface FeeReceiptTemplateRecord {
+  schoolId: string;
+  receiptTitle: string;
+  receiptSubtitle: string;
+  headerNote: string;
+  footerNote: string;
+  termsAndConditions: string;
+  signatureLabel: string;
+  showLogo: boolean;
+  showSignature: boolean;
+  customFields: FeeReceiptTemplateCustomField[];
+}
+
+export interface FeeReceiptTemplateFormPayload {
+  schoolId?: string;
+  receiptTitle?: string;
+  receiptSubtitle?: string;
+  headerNote?: string;
+  footerNote?: string;
+  termsAndConditions?: string;
+  signatureLabel?: string;
+  showLogo?: boolean;
+  showSignature?: boolean;
+  customFields?: FeeReceiptTemplateCustomField[];
+}
+
+export interface FeeReceiptPayload {
+  paymentId: string;
+  receiptId: string;
+  receiptNo: string;
+  receiptDate: string;
+  amount: number;
+  paymentMethod: PaymentMode;
+  reference: string | null;
+  remarks: string | null;
+  downloadFileName: string;
+  school: {
+    id: string;
+    schoolCode: string;
+    name: string;
+    contactEmail: string | null;
+    contactPhone: string | null;
+    address: {
+      line1: string | null;
+      line2: string | null;
+      city: string | null;
+      state: string | null;
+      country: string | null;
+      postalCode: string | null;
+    };
+    branding: {
+      logoUrl: string | null;
+      primaryColor: string | null;
+      secondaryColor: string | null;
+      website: string | null;
+      supportEmail: string | null;
+    };
+  };
+  student: {
+    id: string;
+    name: string;
+    studentCode: string;
+    className: string | null;
+    classCode: string | null;
+    sectionName: string | null;
+  };
+  fee: {
+    id: string;
+    name: string;
+    feeCode: string;
+    category: FeeCategory;
+    session: {
+      id: string;
+      name: string;
+      isCurrent: boolean;
+    } | null;
+    assignedAmount: number;
+    concessionAmount: number;
+    netAmount: number;
+    paidBeforeThisReceipt: number;
+    paidAfterThisReceipt: number;
+    dueAfterThisReceipt: number;
+  };
+  receivedBy: {
+    id: string;
+    name: string;
+  } | null;
+  template: FeeReceiptTemplateRecord;
 }
 
 export interface RecordPaymentPayload {
@@ -793,6 +943,27 @@ export interface MarksEntryPayload {
   }>;
 }
 
+export interface ExamMarkRecord {
+  id: string;
+  examSubjectId: string;
+  student: {
+    id: string;
+    name: string;
+    studentCode: string;
+  };
+  subject: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  maxMarks: number;
+  marksObtained: number | null;
+  grade: string | null;
+  remarks: string | null;
+  isAbsent: boolean;
+  updatedAt: string;
+}
+
 export interface ExamResultRow {
   id: string;
   examId: string;
@@ -854,8 +1025,30 @@ export interface SchoolSettingsRecord {
   academicSessionLabel: string | null;
 }
 
+export interface HolidayClassOption {
+  id: string;
+  name: string;
+  classCode: string;
+}
+
+export interface HolidayOptionsPayload {
+  audiences: HolidayAudience[];
+  classes: HolidayClassOption[];
+}
+
 export interface SchoolBrandingRecord {
   schoolId: string;
+  logoUrl: string | null;
+  primaryColor: string | null;
+  secondaryColor: string | null;
+  website: string | null;
+  supportEmail: string | null;
+}
+
+export interface PortalBrandingRecord {
+  schoolId: string;
+  schoolCode: string;
+  schoolName: string;
   logoUrl: string | null;
   primaryColor: string | null;
   secondaryColor: string | null;
@@ -910,6 +1103,7 @@ export interface DashboardRecentActivityRecord {
 
 export interface DashboardOverviewRecord {
   schoolId: string | null;
+  selectedDate: string | null;
   totals: {
     students: number;
     teachers: number;
@@ -930,6 +1124,11 @@ export interface DashboardOverviewRecord {
     pending: number;
     assigned: number;
     paymentCount: number;
+    byMethod: Array<{
+      method: PaymentMode;
+      total: number;
+      count: number;
+    }>;
   };
   recentActivities: DashboardRecentActivityRecord[];
 }
@@ -961,11 +1160,17 @@ export interface DashboardFeePoint {
 
 export interface DashboardFeesRecord {
   schoolId: string | null;
+  selectedDate: string | null;
   totals: {
     collected: number;
     pending: number;
     assigned: number;
     paymentCount: number;
+    byMethod: Array<{
+      method: PaymentMode;
+      total: number;
+      count: number;
+    }>;
   };
   chart: DashboardFeePoint[];
 }
@@ -1080,6 +1285,31 @@ export interface AdmissionFormPayload {
   schoolId?: string;
 }
 
+export interface PublicAdmissionSchoolOption {
+  id: string;
+  name: string;
+  schoolCode: string;
+}
+
+export interface PublicAdmissionInquiryPayload {
+  schoolId: string;
+  studentName: string;
+  fatherName: string;
+  motherName: string;
+  phone: string;
+  email?: string;
+  address: string;
+  classApplied: string;
+  previousSchool?: string;
+  dob: string;
+  remarks?: string;
+}
+
+export interface AdmissionEnrollPayload {
+  email?: string;
+  portalPassword?: string;
+}
+
 export interface ParentLinkedStudentRecord {
   id: string;
   name: string;
@@ -1129,6 +1359,7 @@ export interface ParentFormPayload {
   relationType: ParentRelationType;
   emergencyContact?: string;
   portalPassword?: string;
+  studentLinks?: ParentStudentLinkPayload[];
   schoolId?: string;
 }
 
@@ -1242,6 +1473,14 @@ export interface StudentPortalFeesPayload {
 export interface StudentPortalResultsPayload {
   student: StudentRecord;
   resultSummary: StudentResultHistorySummary;
+}
+
+export interface StudentPortalExamsPayload {
+  student: StudentRecord;
+  currentEnrollment: PortalCurrentEnrollmentRecord | null;
+  sessions: PortalCurrentEnrollmentRecord['session'][];
+  upcomingDateSheets: ExamDateSheetRecord[];
+  completedExams: StudentResultHistoryRecord[];
 }
 
 export interface StudentPortalHomeworkPayload {
@@ -1395,6 +1634,29 @@ export interface ExamDateSheetFormPayload {
     startTime: string;
     endTime: string;
   }>;
+  schoolId?: string;
+}
+
+export interface ActivityLogActorRecord {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+}
+
+export interface ActivityLogRecord {
+  id: string;
+  timestamp: string;
+  action: string;
+  entity: string;
+  entityId: string | null;
+  schoolId: string | null;
+  metadata: Record<string, unknown>;
+  actor: ActivityLogActorRecord | null;
+}
+
+export interface ActivityLogOptionsPayload {
+  users: ActivityLogActorRecord[];
 }
 
 export interface NoticeRecord {
@@ -1594,6 +1856,10 @@ export interface HolidayRecord {
   startDate: string;
   endDate: string;
   type: HolidayType;
+  audience: HolidayAudience;
+  allClasses: boolean;
+  classIds: string[];
+  classes: HolidayClassOption[];
   createdAt: string;
   updatedAt: string;
 }
@@ -1603,6 +1869,9 @@ export interface HolidayFormPayload {
   startDate: string;
   endDate: string;
   type: HolidayType;
+  audience?: HolidayAudience;
+  allClasses?: boolean;
+  classIds?: string[];
   schoolId?: string;
 }
 
@@ -1862,7 +2131,11 @@ export async function apiFetch<T>(
   const scopedRequest = auth ? applySelectedSchoolScope(path, init) : { path, init };
   const requestHeaders = new Headers(headers);
 
-  if (!requestHeaders.has('Content-Type') && scopedRequest.init.body) {
+  if (
+    !requestHeaders.has('Content-Type') &&
+    scopedRequest.init.body &&
+    !(scopedRequest.init.body instanceof FormData)
+  ) {
     requestHeaders.set('Content-Type', 'application/json');
   }
 
@@ -1912,6 +2185,10 @@ function resolveApiUrl() {
   }
 
   throw new Error('NEXT_PUBLIC_API_URL is not configured.');
+}
+
+function resolveApiOrigin() {
+  return new URL(API_URL).origin;
 }
 
 function applySelectedSchoolScope(
@@ -1975,10 +2252,12 @@ function shouldAttachSchoolScope(path: string) {
   const schoolScopedPrefixes = [
     '/academic-sessions',
     '/admissions',
+    '/audit',
     '/attendance',
     '/classes',
     '/dashboard',
     '/exam-date-sheets',
+    '/fee-submissions',
     '/exams',
     '/fees',
     '/holidays',

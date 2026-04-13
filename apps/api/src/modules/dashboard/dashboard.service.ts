@@ -3,6 +3,7 @@ import {
   AdmissionStatus,
   AttendanceStatus,
   ExamStatus,
+  PaymentMode,
   Prisma,
   RoleType,
   StudentStatus,
@@ -29,7 +30,9 @@ export class DashboardService {
 
   async findOverview(currentUser: JwtUser, query: DashboardQueryDto) {
     const schoolId = this.resolveSchoolScope(currentUser, query.schoolId);
+    const selectedDate = this.normalizeSelectedDate(query.date);
     const cacheKey = this.buildCacheKey('overview', schoolId ?? 'all', {
+      date: selectedDate ? this.toDateKey(selectedDate) : null,
       limit: query.limit ?? DEFAULT_ACTIVITY_LIMIT,
     });
 
@@ -42,7 +45,7 @@ export class DashboardService {
           async () => {
             const todayAttendance = await this.getTodayAttendanceSummary(schoolId);
             const counts = await this.getOverviewCounts(schoolId);
-            const feeTotals = await this.getFeeTotals(schoolId);
+            const feeTotals = await this.getFeeTotals(schoolId, selectedDate);
             const recentActivities = await this.getRecentActivities(
               schoolId,
               query.limit ?? DEFAULT_ACTIVITY_LIMIT,
@@ -50,6 +53,7 @@ export class DashboardService {
 
             return {
               schoolId,
+              selectedDate: selectedDate ? this.toDateKey(selectedDate) : null,
               totals: {
                 students: counts.students,
                 teachers: counts.teachers,
@@ -64,7 +68,7 @@ export class DashboardService {
             };
           },
         ),
-      () => this.buildEmptyOverview(schoolId),
+      () => this.buildEmptyOverview(schoolId, selectedDate),
     );
 
     return {
@@ -109,7 +113,11 @@ export class DashboardService {
   async findFees(currentUser: JwtUser, query: DashboardQueryDto) {
     const schoolId = this.resolveSchoolScope(currentUser, query.schoolId);
     const months = query.months ?? DEFAULT_MONTHS;
-    const cacheKey = this.buildCacheKey('fees', schoolId ?? 'all', { months });
+    const selectedDate = this.normalizeSelectedDate(query.date);
+    const cacheKey = this.buildCacheKey('fees', schoolId ?? 'all', {
+      months,
+      date: selectedDate ? this.toDateKey(selectedDate) : null,
+    });
 
     const data = await this.resolveDashboardData(
       'fees',
@@ -118,17 +126,22 @@ export class DashboardService {
           cacheKey,
           DASHBOARD_TTL_SECONDS,
           async () => {
-            const totals = await this.getFeeTotals(schoolId);
-            const chart = await this.getFeeCollectionChart(schoolId, months);
+            const totals = await this.getFeeTotals(schoolId, selectedDate);
+            const chart = await this.getFeeCollectionChart(
+              schoolId,
+              months,
+              selectedDate,
+            );
 
             return {
               schoolId,
+              selectedDate: selectedDate ? this.toDateKey(selectedDate) : null,
               totals,
               chart,
             };
           },
         ),
-      () => this.buildEmptyFees(schoolId),
+      () => this.buildEmptyFees(schoolId, selectedDate),
     );
 
     return {
@@ -367,8 +380,9 @@ export class DashboardService {
     return Array.from(buckets.values());
   }
 
-  private async getFeeTotals(schoolId: string | null) {
+  private async getFeeTotals(schoolId: string | null, selectedDate?: Date | null) {
     const schoolWhere = this.buildSchoolWhere(schoolId);
+    const paymentDateWhere = this.buildPaymentDateWhere(selectedDate ?? null);
     const assignedAggregate = await this.prisma.feeAssignment.aggregate({
       where: {
         ...schoolWhere,
@@ -382,14 +396,24 @@ export class DashboardService {
       },
     });
     const paidAggregate = await this.prisma.feePayment.aggregate({
-      where: schoolWhere,
+      where: {
+        ...schoolWhere,
+        ...paymentDateWhere,
+      },
       _sum: {
         paidAmount: true,
       },
     });
     const paymentsCount = await this.prisma.feePayment.count({
-      where: schoolWhere,
+      where: {
+        ...schoolWhere,
+        ...paymentDateWhere,
+      },
     });
+    const byMethod = await this.getFeePaymentMethodBreakdown(
+      schoolId,
+      selectedDate ?? null,
+    );
 
     const assignedAmount = this.toNumber(assignedAggregate._sum.netAmount);
     const paidAgainstAssignments = this.toNumber(assignedAggregate._sum.paidAmount);
@@ -400,10 +424,19 @@ export class DashboardService {
       pending: Math.max(assignedAmount - paidAgainstAssignments, 0),
       assigned: assignedAmount,
       paymentCount: paymentsCount,
+      byMethod,
     };
   }
 
-  private async getFeeCollectionChart(schoolId: string | null, months: number) {
+  private async getFeeCollectionChart(
+    schoolId: string | null,
+    months: number,
+    selectedDate?: Date | null,
+  ) {
+    if (selectedDate) {
+      return this.getFeeCollectionDayChart(schoolId, selectedDate);
+    }
+
     const currentMonth = this.startOfMonth(new Date());
     const startDate = this.addMonths(currentMonth, -(months - 1));
     const payments = await this.prisma.feePayment.findMany({
@@ -445,6 +478,88 @@ export class DashboardService {
     }
 
     return Array.from(buckets.values());
+  }
+
+  private async getFeeCollectionDayChart(schoolId: string | null, selectedDate: Date) {
+    const endDate = this.addDays(this.startOfDay(selectedDate), 1);
+    const startDate = this.addDays(endDate, -7);
+    const payments = await this.prisma.feePayment.findMany({
+      where: {
+        ...this.buildSchoolWhere(schoolId),
+        paymentDate: {
+          gte: startDate,
+          lt: endDate,
+        },
+      },
+      select: {
+        paymentDate: true,
+        paidAmount: true,
+      },
+      orderBy: {
+        paymentDate: 'asc',
+      },
+    });
+
+    const buckets = new Map<string, { label: string; total: number }>();
+
+    for (let index = 0; index < 7; index += 1) {
+      const date = this.addDays(startDate, index);
+      const key = this.toDateKey(date);
+      buckets.set(key, {
+        label: this.formatDayLabel(date),
+        total: 0,
+      });
+    }
+
+    for (const payment of payments) {
+      const key = this.toDateKey(payment.paymentDate);
+      const bucket = buckets.get(key);
+
+      if (!bucket) {
+        continue;
+      }
+
+      bucket.total += this.toNumber(payment.paidAmount);
+    }
+
+    return Array.from(buckets.values());
+  }
+
+  private async getFeePaymentMethodBreakdown(
+    schoolId: string | null,
+    selectedDate: Date | null,
+  ) {
+    const payments = await this.prisma.feePayment.findMany({
+      where: {
+        ...this.buildSchoolWhere(schoolId),
+        ...this.buildPaymentDateWhere(selectedDate),
+      },
+      select: {
+        paidAmount: true,
+        feeReceipt: {
+          select: {
+            paymentMode: true,
+          },
+        },
+      },
+    });
+
+    const buckets = new Map<PaymentMode, { method: PaymentMode; total: number; count: number }>();
+
+    for (const payment of payments) {
+      const method = payment.feeReceipt.paymentMode;
+      const bucket = buckets.get(method) ?? {
+        method,
+        total: 0,
+        count: 0,
+      };
+
+      bucket.total += this.toNumber(payment.paidAmount);
+      bucket.count += 1;
+      buckets.set(method, bucket);
+    }
+
+    return Array.from(buckets.values()).sort((left, right) => right.total - left.total);
   }
 
   private async getClassDistribution(schoolId: string | null) {
@@ -692,9 +807,10 @@ export class DashboardService {
     return schoolId ? { schoolId } : {};
   }
 
-  private buildEmptyOverview(schoolId: string | null) {
+  private buildEmptyOverview(schoolId: string | null, selectedDate?: Date | null) {
     return {
       schoolId,
+      selectedDate: selectedDate ? this.toDateKey(selectedDate) : null,
       totals: {
         students: 0,
         teachers: 0,
@@ -715,6 +831,7 @@ export class DashboardService {
         pending: 0,
         assigned: 0,
         paymentCount: 0,
+        byMethod: [],
       },
       recentActivities: [],
     };
@@ -734,14 +851,16 @@ export class DashboardService {
     };
   }
 
-  private buildEmptyFees(schoolId: string | null) {
+  private buildEmptyFees(schoolId: string | null, selectedDate?: Date | null) {
     return {
       schoolId,
+      selectedDate: selectedDate ? this.toDateKey(selectedDate) : null,
       totals: {
         collected: 0,
         pending: 0,
         assigned: 0,
         paymentCount: 0,
+        byMethod: [],
       },
       chart: [],
     };
@@ -889,6 +1008,15 @@ export class DashboardService {
     return new Date(date.getFullYear(), date.getMonth(), 1);
   }
 
+  private normalizeSelectedDate(value?: string | null) {
+    if (!value) {
+      return null;
+    }
+
+    const parsed = new Date(`${value}T00:00:00`);
+    return Number.isNaN(parsed.getTime()) ? null : this.startOfDay(parsed);
+  }
+
   private addDays(date: Date, amount: number) {
     const next = new Date(date);
     next.setDate(next.getDate() + amount);
@@ -901,6 +1029,19 @@ export class DashboardService {
 
   private toDateKey(date: Date) {
     return date.toISOString().slice(0, 10);
+  }
+
+  private buildPaymentDateWhere(selectedDate: Date | null) {
+    if (!selectedDate) {
+      return {};
+    }
+
+    return {
+      paymentDate: {
+        gte: selectedDate,
+        lt: this.addDays(selectedDate, 1),
+      },
+    } satisfies Prisma.FeePaymentWhereInput;
   }
 
   private toMonthKey(date: Date) {

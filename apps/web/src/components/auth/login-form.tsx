@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { Banner } from '@/components/ui/banner';
@@ -101,6 +102,13 @@ export function LoginForm() {
           <Button className="auth-submit" disabled={isPending} size="lg" type="submit">
             {isPending ? 'Signing in...' : 'Continue to dashboard'}
           </Button>
+
+          <p className="muted-text">
+            New admission inquiry?{' '}
+            <Link className="text-link" href="/apply">
+              Apply for admission
+            </Link>
+          </p>
         </form>
       </Card>
     </div>

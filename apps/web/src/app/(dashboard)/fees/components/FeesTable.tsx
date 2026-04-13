@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import type { ApiMeta, StudentFeeRecord } from '@/utils/api';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -11,9 +12,16 @@ interface FeesTableProps {
   loading: boolean;
   meta: ApiMeta;
   onPageChange: (page: number) => void;
+  actions?: ReactNode;
 }
 
-export function FeesTable({ fees, loading, meta, onPageChange }: FeesTableProps) {
+export function FeesTable({
+  fees,
+  loading,
+  meta,
+  onPageChange,
+  actions,
+}: FeesTableProps) {
   return (
     <section className="card panel">
       <div className="panel-heading">
@@ -23,6 +31,7 @@ export function FeesTable({ fees, loading, meta, onPageChange }: FeesTableProps)
             {meta.total} assignment{meta.total === 1 ? '' : 's'} found
           </p>
         </div>
+        {actions}
       </div>
 
       {loading ? <p>Loading fees...</p> : null}

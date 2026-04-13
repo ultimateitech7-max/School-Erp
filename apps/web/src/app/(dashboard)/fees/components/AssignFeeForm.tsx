@@ -1,11 +1,13 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Field, Input, Select } from '@/components/ui/field';
 import type {
   AssignFeePayload,
   FeeStructureRecord,
   FeesOptionsPayload,
-  FeeStudentOption,
 } from '@/utils/api';
 
 interface AssignFeeFormProps {
@@ -16,7 +18,10 @@ interface AssignFeeFormProps {
 }
 
 interface AssignFeeFormState {
+  classId: string;
+  sectionId: string;
   studentId: string;
+  studentSearch: string;
   feeStructureId: string;
   totalAmount: string;
   concessionAmount: string;
@@ -24,12 +29,21 @@ interface AssignFeeFormState {
 }
 
 const initialFormState: AssignFeeFormState = {
+  classId: '',
+  sectionId: '',
   studentId: '',
+  studentSearch: '',
   feeStructureId: '',
   totalAmount: '',
   concessionAmount: '0',
   dueDate: '',
 };
+
+function buildStudentLabel(student: FeesOptionsPayload['students'][number]) {
+  const identity =
+    student.registrationNumber ?? student.admissionNo ?? student.studentCode;
+  return `${student.name} • ${identity}`;
+}
 
 export function AssignFeeForm({
   options,
@@ -38,14 +52,49 @@ export function AssignFeeForm({
   onSubmit,
 }: AssignFeeFormProps) {
   const [form, setForm] = useState<AssignFeeFormState>(initialFormState);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   useEffect(() => {
     setForm((current) => ({
       ...current,
-      studentId: current.studentId || options.students[0]?.id || '',
       feeStructureId: current.feeStructureId || feeStructures[0]?.id || '',
     }));
-  }, [feeStructures, options.students]);
+  }, [feeStructures]);
+
+  const sectionOptions = useMemo(
+    () =>
+      options.classes.find((item) => item.id === form.classId)?.sections ?? [],
+    [form.classId, options.classes],
+  );
+
+  const filteredStudents = useMemo(() => {
+    const search = form.studentSearch.trim().toLowerCase();
+
+    return options.students.filter((student) => {
+      if (form.classId && student.classId !== form.classId) {
+        return false;
+      }
+
+      if (form.sectionId && student.sectionId !== form.sectionId) {
+        return false;
+      }
+
+      if (!search) {
+        return true;
+      }
+
+      const haystack = [
+        student.name,
+        student.studentCode,
+        student.registrationNumber ?? '',
+        student.admissionNo ?? '',
+      ]
+        .join(' ')
+        .toLowerCase();
+
+      return haystack.includes(search);
+    });
+  }, [form.classId, form.sectionId, form.studentSearch, options.students]);
 
   const selectedStructure = useMemo(
     () => feeStructures.find((item) => item.id === form.feeStructureId) ?? null,
@@ -59,18 +108,49 @@ export function AssignFeeForm({
 
     setForm((current) => ({
       ...current,
-      totalAmount:
-        current.totalAmount || String(selectedStructure.amount),
-      dueDate:
-        current.dueDate || (selectedStructure.dueDate?.slice(0, 10) ?? ''),
+      totalAmount: current.totalAmount || String(selectedStructure.amount),
+      dueDate: current.dueDate || (selectedStructure.dueDate?.slice(0, 10) ?? ''),
     }));
   }, [selectedStructure]);
+
+  useEffect(() => {
+    if (form.sectionId && !sectionOptions.some((item) => item.id === form.sectionId)) {
+      setForm((current) => ({
+        ...current,
+        sectionId: '',
+        studentId: '',
+      }));
+    }
+  }, [form.sectionId, sectionOptions]);
+
+  const targetHint = form.studentId
+    ? 'Assigning to one student'
+    : form.sectionId
+      ? 'Assigning to the selected section'
+      : form.classId
+        ? 'Assigning to the full selected class'
+        : 'Select a class, section, or one student';
+
+  const handleStudentPick = (studentId: string) => {
+    const student = options.students.find((item) => item.id === studentId) ?? null;
+
+    setForm((current) => ({
+      ...current,
+      studentId,
+      classId: student?.classId ?? current.classId,
+      sectionId: student?.sectionId ?? current.sectionId,
+      studentSearch: student ? buildStudentLabel(student) : current.studentSearch,
+    }));
+    setShowSuggestions(false);
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     await onSubmit({
-      studentId: form.studentId,
+      studentId: form.studentId || undefined,
+      classId: form.studentId ? undefined : form.classId || undefined,
+      sectionId: form.studentId ? undefined : form.sectionId || undefined,
       feeStructureId: form.feeStructureId,
       sessionId: options.currentSessionId,
       totalAmount: form.totalAmount ? Number(form.totalAmount) : undefined,
@@ -82,9 +162,9 @@ export function AssignFeeForm({
 
     setForm({
       ...initialFormState,
-      studentId: options.students[0]?.id || '',
       feeStructureId: feeStructures[0]?.id || '',
     });
+    setShowSuggestions(false);
   };
 
   return (
@@ -92,32 +172,130 @@ export function AssignFeeForm({
       <div className="panel-heading">
         <div>
           <h2>Assign Fee</h2>
-          <p className="muted-text">Attach a fee structure to a student account.</p>
+          <p className="muted-text">
+            Assign to one student, one section, or a full class from the same form.
+          </p>
         </div>
       </div>
 
       <form className="simple-form" onSubmit={handleSubmit}>
-        <label>
-          <span>Student</span>
-          <select
-            required
-            value={form.studentId}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, studentId: event.target.value }))
-            }
-          >
-            <option value="">Select student</option>
-            {options.students.map((student: FeeStudentOption) => (
-              <option key={student.id} value={student.id}>
-                {student.name} ({student.studentCode})
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="chip-list">
+          <Badge tone="info">{targetHint}</Badge>
+          {form.classId ? (
+            <Badge tone="neutral">
+              {options.classes.find((item) => item.id === form.classId)?.name ?? 'Class'}
+            </Badge>
+          ) : null}
+          {form.sectionId ? (
+            <Badge tone="neutral">
+              {sectionOptions.find((item) => item.id === form.sectionId)?.name ?? 'Section'}
+            </Badge>
+          ) : null}
+        </div>
 
-        <label>
-          <span>Fee Structure</span>
-          <select
+        <Field label="Direct Student Search">
+          <div className="fee-student-search">
+            <Input
+              placeholder="Search by student name, school ID, registration, or admission no."
+              value={form.studentSearch}
+              onBlur={() => {
+                window.setTimeout(() => setShowSuggestions(false), 120);
+              }}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  studentSearch: event.target.value,
+                  studentId: '',
+                }))
+              }
+              onFocus={() => setShowSuggestions(true)}
+            />
+
+            {showSuggestions && form.studentSearch.trim() ? (
+              <div className="fee-student-suggestion-list">
+                {filteredStudents.length ? (
+                  filteredStudents.slice(0, 8).map((student) => (
+                    <button
+                      className="fee-student-suggestion"
+                      key={student.id}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => handleStudentPick(student.id)}
+                      type="button"
+                    >
+                      <strong>{student.name}</strong>
+                      <span>
+                        {student.studentCode}
+                        {student.admissionNo ? ` · ${student.admissionNo}` : ''}
+                      </span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="fee-student-suggestion-empty">No matching student found.</div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        </Field>
+
+        <div className="form-grid compact-form-grid compact-form-grid-4">
+          <Field label="Class">
+            <Select
+              value={form.classId}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  classId: event.target.value,
+                  sectionId: '',
+                  studentId: '',
+                }))
+              }
+            >
+              <option value="">Select class</option>
+              {options.classes.map((academicClass) => (
+                <option key={academicClass.id} value={academicClass.id}>
+                  {academicClass.name} ({academicClass.classCode})
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label="Section">
+            <Select
+              value={form.sectionId}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  sectionId: event.target.value,
+                  studentId: '',
+                }))
+              }
+            >
+              <option value="">Full class</option>
+              {sectionOptions.map((section) => (
+                <option key={section.id} value={section.id}>
+                  {section.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field className="compact-field-span-2" label="Student">
+            <Select
+              value={form.studentId}
+              onChange={(event) => handleStudentPick(event.target.value)}
+            >
+              <option value="">Keep class / section scope</option>
+              {filteredStudents.map((student) => (
+                <option key={student.id} value={student.id}>
+                  {student.name} ({student.studentCode})
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+
+        <Field label="Fee Structure">
+          <Select
             required
             value={form.feeStructureId}
             onChange={(event) =>
@@ -135,55 +313,56 @@ export function AssignFeeForm({
                 {structure.name} ({structure.feeCode})
               </option>
             ))}
-          </select>
-        </label>
+          </Select>
+        </Field>
 
-        <label>
-          <span>Total Amount</span>
-          <input
-            min="0"
-            step="0.01"
-            type="number"
-            value={form.totalAmount}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                totalAmount: event.target.value,
-              }))
-            }
-          />
-        </label>
+        <div className="form-grid compact-form-grid compact-form-grid-4">
+          <Field label="Total Amount">
+            <Input
+              min="0"
+              step="0.01"
+              type="number"
+              value={form.totalAmount}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  totalAmount: event.target.value,
+                }))
+              }
+            />
+          </Field>
 
-        <label>
-          <span>Concession</span>
-          <input
-            min="0"
-            step="0.01"
-            type="number"
-            value={form.concessionAmount}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                concessionAmount: event.target.value,
-              }))
-            }
-          />
-        </label>
+          <Field label="Concession">
+            <Input
+              min="0"
+              step="0.01"
+              type="number"
+              value={form.concessionAmount}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  concessionAmount: event.target.value,
+                }))
+              }
+            />
+          </Field>
 
-        <label>
-          <span>Due Date</span>
-          <input
-            type="date"
-            value={form.dueDate}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, dueDate: event.target.value }))
-            }
-          />
-        </label>
+          <Field label="Due Date">
+            <Input
+              type="date"
+              value={form.dueDate}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, dueDate: event.target.value }))
+              }
+            />
+          </Field>
+        </div>
 
-        <button className="primary-button" disabled={submitting} type="submit">
-          {submitting ? 'Assigning...' : 'Assign Fee'}
-        </button>
+        <div className="form-actions">
+          <Button disabled={submitting || (!form.studentId && !form.classId)} type="submit">
+            {submitting ? 'Assigning...' : 'Assign Fee'}
+          </Button>
+        </div>
       </form>
     </section>
   );

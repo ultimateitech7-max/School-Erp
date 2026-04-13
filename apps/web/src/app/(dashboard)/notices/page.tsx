@@ -2,6 +2,7 @@
 
 import { startTransition, useDeferredValue, useEffect, useState } from 'react';
 import { Banner } from '@/components/ui/banner';
+import { CsvDownloadButton } from '@/components/ui/csv-download-button';
 import { Field, Input, Select } from '@/components/ui/field';
 import {
   apiFetch,
@@ -12,6 +13,8 @@ import {
   type NoticeFormPayload,
   type NoticeRecord,
 } from '@/utils/api';
+import { noticeCsvColumns } from '@/utils/csv-exporters';
+import { buildCsvFilename, exportPaginatedApiCsv } from '@/utils/csv';
 import { NoticeForm } from './components/NoticeForm';
 import { NoticeTable } from './components/NoticeTable';
 
@@ -105,6 +108,34 @@ export default function NoticesPage() {
     }
   };
 
+  const handleExportCsv = async () => {
+    try {
+      const count = await exportPaginatedApiCsv<NoticeRecord>({
+        path: '/notices',
+        params: {
+          search: deferredSearch || undefined,
+          audienceType: audienceType || undefined,
+          isPublished:
+            statusFilter === ''
+              ? undefined
+              : statusFilter === 'published',
+        },
+        columns: noticeCsvColumns,
+        filename: buildCsvFilename('notices'),
+      });
+
+      setMessage({
+        type: 'success',
+        text: `Downloaded ${count} notice${count === 1 ? '' : 's'} as CSV.`,
+      });
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Failed to export notices.',
+      });
+    }
+  };
+
   return (
     <div className="dashboard-stack">
       <section className="card panel academic-toolbar">
@@ -141,6 +172,11 @@ export default function NoticesPage() {
               <option value="published">Published</option>
             </Select>
           </Field>
+          <CsvDownloadButton
+            label="Download CSV"
+            loadingLabel="Exporting..."
+            onDownload={handleExportCsv}
+          />
         </div>
       </section>
 

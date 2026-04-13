@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -19,6 +21,7 @@ import { AssignFeeDto } from './dto/assign-fee.dto';
 import { CreateFeeStructureDto } from './dto/create-fee-structure.dto';
 import { FeeQueryDto } from './dto/fee-query.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
+import { UpdateFeeStructureDto } from './dto/update-fee-structure.dto';
 import { FeesService } from './fees.service';
 
 @Controller('fees')
@@ -43,6 +46,26 @@ export class FeesController {
     @Body() dto: CreateFeeStructureDto,
   ) {
     return this.feesService.createFeeStructure(currentUser, dto);
+  }
+
+  @Patch('structure/:id')
+  @Permissions('fees.manage')
+  updateFeeStructure(
+    @CurrentUser() currentUser: JwtUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateFeeStructureDto,
+  ) {
+    return this.feesService.updateFeeStructure(currentUser, id, dto);
+  }
+
+  @Delete('structure/:id')
+  @Permissions('fees.manage')
+  removeFeeStructure(
+    @CurrentUser() currentUser: JwtUser,
+    @Param('id') id: string,
+    @Query('schoolId') schoolId?: string,
+  ) {
+    return this.feesService.removeFeeStructure(currentUser, id, schoolId ?? null);
   }
 
   @Get('structure')
@@ -86,5 +109,14 @@ export class FeesController {
     @Query() query: FeeQueryDto,
   ) {
     return this.feesService.findPayments(currentUser, query);
+  }
+
+  @Get('payments/:paymentId/receipt')
+  @Permissions('fees.read')
+  getPaymentReceipt(
+    @CurrentUser() currentUser: JwtUser,
+    @Param('paymentId') paymentId: string,
+  ) {
+    return this.feesService.getPaymentReceipt(currentUser, paymentId);
   }
 }

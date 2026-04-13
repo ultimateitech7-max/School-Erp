@@ -4,10 +4,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { unlink, mkdir, writeFile } from 'fs/promises';
+import { randomUUID } from 'crypto';
+import { basename, extname, join } from 'path';
 import { ModuleCode, Prisma, RoleType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtUser } from '../auth/strategies/jwt.strategy';
 import { UpdateSchoolBrandingDto } from './dto/update-school-branding.dto';
+import { UpdateFeeReceiptTemplateDto } from './dto/update-fee-receipt-template.dto';
 import { UpdateSchoolModulesDto } from './dto/update-school-modules.dto';
 import { UpdateSchoolSettingsDto } from './dto/update-school-settings.dto';
 
@@ -124,6 +128,23 @@ const MODULE_CATALOG: Array<{
   },
 ];
 
+const BRANDING_UPLOAD_ROOT = join(process.cwd(), 'uploads', 'branding');
+const BRANDING_PUBLIC_PREFIX = '/uploads/branding';
+const ALLOWED_BRANDING_LOGO_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/svg+xml',
+]);
+const MAX_BRANDING_LOGO_BYTES = 5 * 1024 * 1024;
+
+export interface BrandingLogoUploadFile {
+  originalname: string;
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+}
+
 @Injectable()
 export class SettingsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -184,9 +205,77 @@ export class SettingsService {
     };
   }
 
+  async findFeeReceiptTemplate(
+    currentUser: JwtUser,
+    schoolIdOverride?: string | null,
+  ) {
+    const school = await this.findSchoolOrThrow(currentUser, schoolIdOverride);
+
+    return {
+      success: true,
+      message: 'Fee receipt template fetched successfully.',
+      data: this.serializeFeeReceiptTemplate(school),
+    };
+  }
+
+  async updateFeeReceiptTemplate(
+    currentUser: JwtUser,
+    dto: UpdateFeeReceiptTemplateDto,
+  ) {
+    const school = await this.findSchoolOrThrow(currentUser, dto.schoolId ?? null);
+    const settingsJson = this.getSettingsJson(school.settingsJson);
+    const currentTemplate = this.getFeeReceiptTemplateSettings(settingsJson);
+
+    const updatedSchool = await this.prisma.school.update({
+      where: { id: school.id },
+      data: {
+        settingsJson: {
+          ...settingsJson,
+          feeReceiptTemplate: {
+            ...currentTemplate,
+            ...(dto.receiptTitle !== undefined ? { receiptTitle: dto.receiptTitle } : {}),
+            ...(dto.receiptSubtitle !== undefined
+              ? { receiptSubtitle: dto.receiptSubtitle }
+              : {}),
+            ...(dto.headerNote !== undefined ? { headerNote: dto.headerNote } : {}),
+            ...(dto.footerNote !== undefined ? { footerNote: dto.footerNote } : {}),
+            ...(dto.termsAndConditions !== undefined
+              ? { termsAndConditions: dto.termsAndConditions }
+              : {}),
+            ...(dto.signatureLabel !== undefined
+              ? { signatureLabel: dto.signatureLabel }
+              : {}),
+            ...(dto.showLogo !== undefined ? { showLogo: dto.showLogo } : {}),
+            ...(dto.showSignature !== undefined
+              ? { showSignature: dto.showSignature }
+              : {}),
+            ...(dto.customFields !== undefined
+              ? {
+                  customFields: dto.customFields.map((field) => ({
+                    label: field.label.trim(),
+                    value: field.value.trim(),
+                  })),
+                }
+              : {}),
+          },
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Fee receipt template updated successfully.',
+      data: this.serializeFeeReceiptTemplate(updatedSchool),
+    };
+  }
+
   async updateBranding(currentUser: JwtUser, dto: UpdateSchoolBrandingDto) {
     const school = await this.findSchoolOrThrow(currentUser, dto.schoolId ?? null);
     const settingsJson = this.getSettingsJson(school.settingsJson);
+    const normalizedLogoUrl =
+      dto.logoUrl !== undefined
+        ? this.normalizeBrandingLogoUrl(dto.logoUrl)
+        : undefined;
 
     const updatedSchool = await this.prisma.school.update({
       where: { id: school.id },
@@ -195,7 +284,7 @@ export class SettingsService {
           ...settingsJson,
           branding: {
             ...this.getBrandingSettings(settingsJson),
-            ...(dto.logoUrl !== undefined ? { logoUrl: dto.logoUrl ?? null } : {}),
+            ...(dto.logoUrl !== undefined ? { logoUrl: normalizedLogoUrl } : {}),
             ...(dto.primaryColor !== undefined
               ? { primaryColor: dto.primaryColor ?? null }
               : {}),
@@ -216,6 +305,68 @@ export class SettingsService {
       message: 'Branding settings updated successfully.',
       data: this.serializeBranding(updatedSchool),
     };
+  }
+
+  async uploadBrandingLogo(
+    currentUser: JwtUser,
+    file: BrandingLogoUploadFile | undefined,
+    schoolIdOverride?: string | null,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Please choose an image file to upload.');
+    }
+
+    if (!ALLOWED_BRANDING_LOGO_TYPES.has(file.mimetype)) {
+      throw new BadRequestException(
+        'Only JPG, PNG, WebP, or SVG logo files are allowed.',
+      );
+    }
+
+    if (!file.size || file.size > MAX_BRANDING_LOGO_BYTES) {
+      throw new BadRequestException('Logo file size must be 5 MB or less.');
+    }
+
+    const school = await this.findSchoolOrThrow(currentUser, schoolIdOverride);
+    const settingsJson = this.getSettingsJson(school.settingsJson);
+    const currentBranding = this.getBrandingSettings(settingsJson);
+    const previousLogoUrl =
+      typeof currentBranding.logoUrl === 'string' ? currentBranding.logoUrl : null;
+    const extension = this.resolveBrandingLogoExtension(
+      file.originalname,
+      file.mimetype,
+    );
+    const filename = `school-${school.id}-${Date.now()}-${randomUUID()}.${extension}`;
+    const storagePath = join(BRANDING_UPLOAD_ROOT, filename);
+    const publicLogoUrl = `${BRANDING_PUBLIC_PREFIX}/${filename}`;
+
+    await mkdir(BRANDING_UPLOAD_ROOT, { recursive: true });
+    await writeFile(storagePath, file.buffer);
+
+    try {
+      const updatedSchool = await this.prisma.school.update({
+        where: { id: school.id },
+        data: {
+          settingsJson: {
+            ...settingsJson,
+            branding: {
+              ...currentBranding,
+              logoUrl: publicLogoUrl,
+            },
+          } as Prisma.InputJsonValue,
+        },
+      });
+
+      await this.deleteManagedBrandingLogo(previousLogoUrl, publicLogoUrl);
+
+      return {
+        success: true,
+        message: 'Branding logo uploaded successfully.',
+        data: this.serializeBranding(updatedSchool),
+      };
+    } catch (error) {
+      await unlink(storagePath).catch(() => undefined);
+      throw error;
+    }
   }
 
   async findModules(currentUser: JwtUser, schoolIdOverride?: string | null) {
@@ -456,6 +607,49 @@ export class SettingsService {
     };
   }
 
+  private serializeFeeReceiptTemplate(school: {
+    id: string;
+    settingsJson: Prisma.JsonValue;
+  }) {
+    const template = this.getFeeReceiptTemplateSettings(
+      this.getSettingsJson(school.settingsJson),
+    );
+
+    return {
+      schoolId: school.id,
+      receiptTitle: template.receiptTitle ?? 'Fee Payment Receipt',
+      receiptSubtitle:
+        template.receiptSubtitle ?? 'Official acknowledgement of fee payment',
+      headerNote:
+        template.headerNote ??
+        'Thank you for your payment. Please keep this receipt for your records.',
+      footerNote:
+        template.footerNote ??
+        'This is a system-generated receipt and is valid without a physical stamp.',
+      termsAndConditions:
+        template.termsAndConditions ??
+        'Fees once paid are subject to the school fee policy and may not be refundable.',
+      signatureLabel: template.signatureLabel ?? 'Authorized Signatory',
+      showLogo: template.showLogo ?? true,
+      showSignature: template.showSignature ?? true,
+      customFields: Array.isArray(template.customFields)
+        ? template.customFields
+            .filter(
+              (field) =>
+                field &&
+                typeof field === 'object' &&
+                !Array.isArray(field) &&
+                typeof field.label === 'string' &&
+                typeof field.value === 'string',
+            )
+            .map((field) => ({
+              label: String(field.label),
+              value: String(field.value),
+            }))
+        : [],
+    };
+  }
+
   private getSettingsJson(value: Prisma.JsonValue) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return {} as Record<string, any>;
@@ -486,6 +680,91 @@ export class SettingsService {
     }
 
     return settingsJson.branding as Record<string, any>;
+  }
+
+  private getFeeReceiptTemplateSettings(settingsJson: Record<string, any>) {
+    if (
+      !settingsJson.feeReceiptTemplate ||
+      typeof settingsJson.feeReceiptTemplate !== 'object' ||
+      Array.isArray(settingsJson.feeReceiptTemplate)
+    ) {
+      return {} as Record<string, any>;
+    }
+
+    return settingsJson.feeReceiptTemplate as Record<string, any>;
+  }
+
+  private normalizeBrandingLogoUrl(value: string | null | undefined) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    const normalized = String(value).trim();
+
+    if (!normalized) {
+      return null;
+    }
+
+    if (/^https?:\/\/.+/i.test(normalized)) {
+      return normalized;
+    }
+
+    if (normalized.startsWith(`${BRANDING_PUBLIC_PREFIX}/`)) {
+      return normalized;
+    }
+
+    throw new BadRequestException(
+      'Logo URL must be a valid http/https URL or an uploaded branding asset path.',
+    );
+  }
+
+  private resolveBrandingLogoExtension(originalname: string, mimetype: string) {
+    const extension = extname(originalname).replace('.', '').trim().toLowerCase();
+
+    if (extension) {
+      if (extension === 'jpg') {
+        return 'jpeg';
+      }
+
+      if (['jpeg', 'png', 'webp', 'svg'].includes(extension)) {
+        return extension;
+      }
+    }
+
+    switch (mimetype) {
+      case 'image/jpeg':
+        return 'jpeg';
+      case 'image/png':
+        return 'png';
+      case 'image/webp':
+        return 'webp';
+      case 'image/svg+xml':
+        return 'svg';
+      default:
+        throw new BadRequestException('Unsupported logo file format.');
+    }
+  }
+
+  private async deleteManagedBrandingLogo(
+    previousLogoUrl: string | null,
+    currentLogoUrl: string | null,
+  ) {
+    if (
+      !previousLogoUrl ||
+      previousLogoUrl === currentLogoUrl ||
+      !previousLogoUrl.startsWith(`${BRANDING_PUBLIC_PREFIX}/`)
+    ) {
+      return;
+    }
+
+    const filename = basename(previousLogoUrl);
+
+    if (!filename) {
+      return;
+    }
+
+    const previousFilePath = join(BRANDING_UPLOAD_ROOT, filename);
+    await unlink(previousFilePath).catch(() => undefined);
   }
 
   private getModuleToggleMap(settingsJson: Record<string, any>) {

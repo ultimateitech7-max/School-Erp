@@ -773,6 +773,97 @@ export class ExamsService {
     };
   }
 
+  async findExamMarks(
+    currentUser: JwtUser,
+    examId: string,
+    schoolIdOverride?: string | null,
+  ) {
+    const exam = await this.findExamOrThrow(currentUser, examId, schoolIdOverride);
+    const detailedExam = await this.prisma.exam.findFirst({
+      where: {
+        id: exam.id,
+        schoolId: exam.schoolId,
+      },
+      include: {
+        examSubjects: {
+          include: {
+            subject: {
+              select: {
+                id: true,
+                subjectName: true,
+                subjectCode: true,
+              },
+            },
+            marks: {
+              include: {
+                student: {
+                  select: {
+                    id: true,
+                    fullName: true,
+                    studentCode: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: {
+            subject: {
+              subjectName: 'asc',
+            },
+          },
+        },
+      },
+    });
+
+    if (!detailedExam) {
+      throw new NotFoundException('Exam not found.');
+    }
+
+    const marks = detailedExam.examSubjects
+      .flatMap((examSubject) =>
+        examSubject.marks.map((mark) => ({
+          id: mark.id,
+          examSubjectId: examSubject.id,
+          student: {
+            id: mark.student.id,
+            name: mark.student.fullName,
+            studentCode: mark.student.studentCode,
+          },
+          subject: {
+            id: examSubject.subject.id,
+            name: examSubject.subject.subjectName,
+            code: examSubject.subject.subjectCode,
+          },
+          maxMarks: Number(examSubject.maxMarks.toString()),
+          marksObtained: mark.obtainedMarks
+            ? Number(mark.obtainedMarks.toString())
+            : null,
+          grade: mark.grade,
+          remarks: mark.remarks,
+          isAbsent: mark.isAbsent,
+          updatedAt: mark.updatedAt.toISOString(),
+        })),
+      )
+      .sort((left, right) => {
+        const subjectCompare = left.subject.name.localeCompare(right.subject.name);
+
+        if (subjectCompare !== 0) {
+          return subjectCompare;
+        }
+
+        return left.student.name.localeCompare(right.student.name);
+      });
+
+    return {
+      success: true,
+      message: 'Exam marks fetched successfully.',
+      data: {
+        exam: this.serializeExam(exam),
+        marks,
+      },
+    };
+  }
+
   async findStudentResults(
     currentUser: JwtUser,
     studentId: string,

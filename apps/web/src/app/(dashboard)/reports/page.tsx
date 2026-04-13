@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Banner } from '@/components/ui/banner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { CsvDownloadButton } from '@/components/ui/csv-download-button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Field, Select } from '@/components/ui/field';
 import { Spinner } from '@/components/ui/spinner';
@@ -17,6 +18,12 @@ import {
   type FeesReportPayload,
   type ResultsReportPayload,
 } from '@/utils/api';
+import {
+  attendanceReportCsvColumns,
+  feesReportCsvColumns,
+  resultsReportCsvColumns,
+} from '@/utils/csv-exporters';
+import { buildCsvFilename, exportRowsToCsv } from '@/utils/csv';
 
 export default function ReportsPage() {
   const [classes, setClasses] = useState<AcademicClassRecord[]>([]);
@@ -75,6 +82,33 @@ export default function ReportsPage() {
         setLoading(false);
       });
   }, [classId, sessionId]);
+
+  const exportAttendanceCsv = async () => {
+    const count = exportRowsToCsv(
+      attendance?.classes ?? [],
+      attendanceReportCsvColumns,
+      buildCsvFilename('attendance-report'),
+    );
+    setMessage(`Downloaded ${count} attendance report row${count === 1 ? '' : 's'} as CSV.`);
+  };
+
+  const exportFeesCsv = async () => {
+    const count = exportRowsToCsv(
+      fees?.classes ?? [],
+      feesReportCsvColumns,
+      buildCsvFilename('fees-report'),
+    );
+    setMessage(`Downloaded ${count} fee report row${count === 1 ? '' : 's'} as CSV.`);
+  };
+
+  const exportResultsCsv = async () => {
+    const count = exportRowsToCsv(
+      results?.exams ?? [],
+      resultsReportCsvColumns,
+      buildCsvFilename('results-report'),
+    );
+    setMessage(`Downloaded ${count} result report row${count === 1 ? '' : 's'} as CSV.`);
+  };
 
   return (
     <div className="dashboard-stack">
@@ -166,6 +200,11 @@ export default function ReportsPage() {
                   <h2>Attendance Summary</h2>
                   <p className="muted-text">Class-wise attendance totals.</p>
                 </div>
+                <CsvDownloadButton
+                  label="Download CSV"
+                  loadingLabel="Exporting..."
+                  onDownload={exportAttendanceCsv}
+                />
               </div>
               {attendance.classes.length ? (
                 <div className="responsive-table">
@@ -199,6 +238,11 @@ export default function ReportsPage() {
                   <h2>Fees Summary</h2>
                   <p className="muted-text">Assigned, paid, and due amounts by class.</p>
                 </div>
+                <CsvDownloadButton
+                  label="Download CSV"
+                  loadingLabel="Exporting..."
+                  onDownload={exportFeesCsv}
+                />
               </div>
               {fees.classes.length ? (
                 <div className="responsive-table">
@@ -235,6 +279,11 @@ export default function ReportsPage() {
                 <h2>Result Overview</h2>
                 <p className="muted-text">Average class performance by exam.</p>
               </div>
+              <CsvDownloadButton
+                label="Download CSV"
+                loadingLabel="Exporting..."
+                onDownload={exportResultsCsv}
+              />
             </div>
             {results.exams.length ? (
               <div className="responsive-table">

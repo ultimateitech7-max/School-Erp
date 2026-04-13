@@ -258,6 +258,144 @@ export class ExamDateSheetsService {
     };
   }
 
+  async update(currentUser: JwtUser, id: string, dto: CreateExamDateSheetDto) {
+    const existing = await this.findScopedDateSheetOrThrow(
+      currentUser,
+      id,
+      dto.schoolId ?? null,
+    );
+    const schoolId = existing.schoolId;
+    const classRecord = await this.prisma.academicClass.findFirst({
+      where: {
+        id: dto.classId,
+        schoolId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        className: true,
+      },
+    });
+
+    if (!classRecord) {
+      throw new NotFoundException('Class not found for this school.');
+    }
+
+    const normalizedEntries = dto.entries.map((entry) => ({
+      ...entry,
+      examDate: this.normalizeDate(entry.examDate),
+      startTime: entry.startTime,
+      endTime: entry.endTime,
+    }));
+
+    for (const entry of normalizedEntries) {
+      this.validateTimeWindow(entry.startTime, entry.endTime);
+    }
+
+    await this.ensureSubjectsBelongToClass(
+      schoolId,
+      classRecord.id,
+      normalizedEntries.map((entry) => entry.subjectId),
+    );
+    this.ensureNoInternalOverlaps(normalizedEntries);
+    await this.ensureNoExistingExamOverlaps(
+      schoolId,
+      classRecord.id,
+      normalizedEntries,
+      existing.id,
+    );
+
+    const updatedDateSheet = await this.prisma.$transaction(
+      async (tx) => {
+        await tx.examDateSheet.update({
+          where: {
+            id: existing.id,
+          },
+          data: {
+            classId: classRecord.id,
+            examName: dto.examName.trim(),
+          },
+        });
+
+        await tx.examDateSheetEntry.deleteMany({
+          where: {
+            dateSheetId: existing.id,
+          },
+        });
+
+        await tx.examDateSheetEntry.createMany({
+          data: normalizedEntries.map((entry) => ({
+            dateSheetId: existing.id,
+            subjectId: entry.subjectId,
+            examDate: entry.examDate,
+            startTime: entry.startTime,
+            endTime: entry.endTime,
+          })),
+        });
+
+        return tx.examDateSheet.findUniqueOrThrow({
+          where: {
+            id: existing.id,
+          },
+          include: dateSheetInclude,
+        });
+      },
+      {
+        maxWait: 20_000,
+        timeout: 60_000,
+      },
+    );
+
+    await this.auditService.write({
+      action: 'exam_date_sheets.update',
+      entity: 'exam_date_sheet',
+      entityId: updatedDateSheet.id,
+      actorUserId: currentUser.id,
+      schoolId,
+      metadata: {
+        examName: updatedDateSheet.examName,
+        classId: updatedDateSheet.classId,
+        entriesCount: updatedDateSheet.entries.length,
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Exam date sheet updated successfully.',
+      data: this.serializeDateSheet(updatedDateSheet),
+    };
+  }
+
+  async remove(currentUser: JwtUser, id: string, schoolIdOverride?: string | null) {
+    const item = await this.findScopedDateSheetOrThrow(currentUser, id, schoolIdOverride);
+
+    await this.prisma.examDateSheet.delete({
+      where: {
+        id: item.id,
+      },
+    });
+
+    await this.auditService.write({
+      action: 'exam_date_sheets.delete',
+      entity: 'exam_date_sheet',
+      entityId: item.id,
+      actorUserId: currentUser.id,
+      schoolId: item.schoolId,
+      metadata: {
+        examName: item.examName,
+        classId: item.classId,
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Exam date sheet deleted successfully.',
+      data: {
+        id: item.id,
+      },
+    };
+  }
+
   async findOptions(currentUser: JwtUser, schoolIdOverride?: string | null) {
     const schoolId = this.resolveReadSchoolScope(currentUser, schoolIdOverride);
     const currentSession = schoolId
@@ -467,6 +605,7 @@ export class ExamDateSheetsService {
       startTime: string;
       endTime: string;
     }>,
+    excludeDateSheetId?: string,
   ) {
     const examDates = [...new Set(entries.map((entry) => entry.examDate.toISOString()))].map(
       (value) => new Date(value),
@@ -480,6 +619,7 @@ export class ExamDateSheetsService {
         dateSheet: {
           schoolId,
           classId,
+          ...(excludeDateSheetId ? { id: { not: excludeDateSheetId } } : {}),
         },
       },
       include: {

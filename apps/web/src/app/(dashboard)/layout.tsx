@@ -7,12 +7,14 @@ import { DashboardSidebar } from '@/components/dashboard/sidebar';
 import { Badge } from '@/components/ui/badge';
 import { Field, Select } from '@/components/ui/field';
 import { Spinner } from '@/components/ui/spinner';
+import { useSchoolBranding } from '@/hooks/use-school-branding';
 import { useSchoolScope } from '@/hooks/use-school-scope';
 import { getStoredAuthSession, type AuthSession } from '@/utils/auth-storage';
 import {
   apiFetch,
   type ApiSuccessResponse,
   type UserOptionsPayload,
+  type UserRole,
 } from '@/utils/api';
 
 const titles: Record<string, string> = {
@@ -22,6 +24,7 @@ const titles: Record<string, string> = {
   '/academic-sessions': 'Academic Sessions',
   '/admissions': 'Admissions',
   '/attendance': 'Attendance',
+  '/activity-logs': 'Activity Logs',
   '/schools': 'Schools',
   '/promotions': 'Promotions',
   '/parents': 'Parents',
@@ -32,12 +35,15 @@ const titles: Record<string, string> = {
   '/subjects': 'Subjects',
   '/timetables': 'Timetables',
   '/exam-date-sheets': 'Exam Date Sheets',
+  '/fee-submissions': 'Fee Submissions',
   '/homework': 'Homework',
   '/reports': 'Reports',
   '/holidays': 'Holiday Calendar',
-  '/messages/inbox': 'Inbox',
-  '/messages/sent': 'Sent Messages',
-  '/messages/compose': 'Compose Message',
+  '/calendar': 'School Calendar',
+  '/announcements': 'Announcements',
+  '/messages/inbox': 'School Chat',
+  '/messages/sent': 'School Chat',
+  '/messages/compose': 'School Chat',
   '/notices': 'Notice Board',
   '/exams': 'Exams & Results',
   '/settings': 'Settings',
@@ -50,26 +56,60 @@ const descriptions: Record<string, string> = {
   '/academic-sessions': 'Create and manage school-specific academic year timelines securely.',
   '/admissions': 'Track fresh applications, approvals, and student onboarding from one place.',
   '/attendance': 'Capture daily attendance, filters, and summaries with less friction.',
+  '/activity-logs': 'Review school-wide user activity and drill into person-specific actions.',
   '/schools': 'Create schools, provision school admins, and manage tenant onboarding.',
   '/promotions': 'Manage student progression, detention, preview checks, and history safely.',
   '/parents': 'Manage guardians, parent portal access, and linked children cleanly.',
   '/users': 'Manage staff access, role assignment, and administrative control.',
-  '/fees': 'Track collection health, dues, and payment operations across the school.',
+  '/fees': 'Create fee structures, assign dues, and manage school fee setup.',
   '/classes': 'Build class structures, assign subjects, and manage academic setup.',
   '/sections': 'Configure sections, room details, and class organization.',
   '/subjects': 'Maintain subject catalog and curriculum mapping cleanly.',
   '/timetables': 'Build weekly class schedules and track teacher allocations clearly.',
   '/exam-date-sheets': 'Plan exam schedules by class with printable academic date sheets.',
+  '/fee-submissions': 'Search students quickly and submit fee payments from a dedicated desk.',
   '/homework': 'Assign and review classroom work with due dates and class targeting.',
   '/reports': 'Review attendance, fees, and result performance with printable summaries.',
   '/holidays': 'Track upcoming school breaks, events, and academic calendar dates.',
-  '/messages/inbox': 'Review incoming communication and unread updates.',
-  '/messages/sent': 'Track outgoing messages and delivery visibility.',
-  '/messages/compose': 'Send role-safe messages inside your school workspace.',
+  '/calendar': 'Review upcoming holidays and school events relevant to your role.',
+  '/announcements': 'Read school-wide updates, reminders, and role-targeted notices.',
+  '/messages/inbox': 'Chat with any school user in one thread-based workspace.',
+  '/messages/sent': 'Chat with any school user in one thread-based workspace.',
+  '/messages/compose': 'Start a new chat by selecting a role and a person.',
   '/notices': 'Publish targeted school announcements for dashboards and portals.',
   '/exams': 'Coordinate exams, marks entry, and result visibility from one place.',
   '/settings': 'Customize school profile, branding, and enabled modules.',
 };
+
+function resolveTitle(pathname: string, role?: UserRole) {
+  if (pathname === '/' || pathname === '/dashboard') {
+    if (role === 'TEACHER') {
+      return 'Teacher Dashboard';
+    }
+
+    if (role === 'STAFF') {
+      return 'Staff Dashboard';
+    }
+  }
+
+  return titles[pathname] ?? 'School OS';
+}
+
+function resolveDescription(pathname: string, role?: UserRole) {
+  if (pathname === '/' || pathname === '/dashboard') {
+    if (role === 'TEACHER') {
+      return 'Stay focused on classes, attendance, homework, marks, and school communication.';
+    }
+
+    if (role === 'STAFF') {
+      return 'Stay focused on communication, coordination, announcements, and school calendar updates.';
+    }
+  }
+
+  return (
+    descriptions[pathname] ?? 'Operate your school from a refined admin workspace.'
+  );
+}
 
 export default function DashboardLayout({
   children,
@@ -82,6 +122,7 @@ export default function DashboardLayout({
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [schoolOptions, setSchoolOptions] = useState<UserOptionsPayload['schools']>([]);
   const { selectedSchoolId, setSelectedSchoolId } = useSchoolScope();
+  const { branding } = useSchoolBranding(session);
 
   useEffect(() => {
     const storedSession = getStoredAuthSession();
@@ -152,15 +193,38 @@ export default function DashboardLayout({
 
   return (
     <div className="dashboard-shell">
-      <DashboardSidebar />
+      <DashboardSidebar branding={branding} />
       <section className="dashboard-main">
         <header className="card page-header">
           <div className="page-header-copy">
             <span className="eyebrow">{greeting}</span>
-            <h1>{titles[pathname] ?? 'School OS'}</h1>
-            <p>{descriptions[pathname] ?? 'Operate your school from a refined admin workspace.'}</p>
+            <h1>{resolveTitle(pathname, session?.user.role)}</h1>
+            <p>{resolveDescription(pathname, session?.user.role)}</p>
           </div>
           <div className="page-header-meta">
+            {branding ? (
+              <div className="page-header-school">
+                <div className="school-brand-mark page-header-school-mark">
+                  {branding.logoUrl ? (
+                    <img
+                      alt={`${branding.schoolName} logo`}
+                      className="school-brand-logo"
+                      src={branding.logoUrl}
+                    />
+                  ) : (
+                    <span>{branding.schoolName.slice(0, 1).toUpperCase()}</span>
+                  )}
+                </div>
+                <div className="page-header-school-copy">
+                  <strong>{branding.schoolName}</strong>
+                  <span className="muted-text">
+                    {branding.schoolCode?.toUpperCase() ??
+                      branding.website?.replace(/^https?:\/\//, '') ??
+                      'School workspace'}
+                  </span>
+                </div>
+              </div>
+            ) : null}
             {session?.user.role === 'SUPER_ADMIN' ? (
               <div className="page-header-scope">
                 <Field

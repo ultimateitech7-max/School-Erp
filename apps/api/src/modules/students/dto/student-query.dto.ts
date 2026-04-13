@@ -27,4 +27,12 @@ export class StudentQueryDto {
   @IsOptional()
   @IsUUID()
   schoolId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  classId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  sectionId?: string;
 }

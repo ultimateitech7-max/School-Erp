@@ -247,6 +247,29 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  async getListJson<T>(key: string, start = 0, stop = -1): Promise<T[]> {
+    const client = this.client;
+
+    if (!client) {
+      return [];
+    }
+
+    try {
+      const values = await client.lrange(key, start, stop);
+
+      return values.flatMap((item) => {
+        try {
+          return [JSON.parse(item) as T];
+        } catch {
+          return [];
+        }
+      });
+    } catch (error) {
+      this.handleOperationFailure('lrange', key, error);
+      return [];
+    }
+  }
+
   private handleOperationFailure(
     operation: string,
     key: string,

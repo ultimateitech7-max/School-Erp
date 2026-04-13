@@ -184,6 +184,12 @@ enum HolidayType {
   EVENT
 }
 
+enum HolidayAudience {
+  ALL
+  STAFF
+  STUDENT
+}
+
 enum NotificationChannel {
   EMAIL
   SMS
@@ -264,6 +270,7 @@ model School {
   notifications         Notification[]
   messages              Message[]
   holidays              Holiday[]
+  holidayClassTargets   HolidayClassTarget[]
   routes                Route[]
   vehicles              Vehicle[]
   transportAssignments  TransportAssignment[]
@@ -447,6 +454,7 @@ model AcademicClass {
   timetableEntries   TimetableEntry[]
   attendanceRecords  AttendanceRecord[]
   feeStructures      FeeStructure[]
+  holidayClassTargets HolidayClassTarget[]
   exams              Exam[]
   examDateSheets     ExamDateSheet[]
   homeworkItems      Homework[]
@@ -1165,19 +1173,38 @@ model Message {
 }
 
 model Holiday {
-  id        String      @id @default(uuid()) @db.Uuid
-  schoolId  String      @map("school_id") @db.Uuid
-  title     String      @db.VarChar(200)
-  startDate DateTime    @map("start_date") @db.Date
-  endDate   DateTime    @map("end_date") @db.Date
-  type      HolidayType
-  createdAt DateTime    @default(now()) @map("created_at")
-  updatedAt DateTime    @updatedAt @map("updated_at")
-  school    School      @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  id           String               @id @default(uuid()) @db.Uuid
+  schoolId     String               @map("school_id") @db.Uuid
+  title        String               @db.VarChar(200)
+  startDate    DateTime             @map("start_date") @db.Date
+  endDate      DateTime             @map("end_date") @db.Date
+  type         HolidayType
+  audience     HolidayAudience      @default(ALL)
+  allClasses   Boolean              @default(true) @map("all_classes")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+  school       School               @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  targetClasses HolidayClassTarget[]
 
   @@index([schoolId, startDate, endDate])
   @@index([schoolId, type, startDate])
+  @@index([schoolId, audience, startDate])
   @@map("holidays")
+}
+
+model HolidayClassTarget {
+  id        String        @id @default(uuid()) @db.Uuid
+  schoolId  String        @map("school_id") @db.Uuid
+  holidayId String        @map("holiday_id") @db.Uuid
+  classId   String        @map("class_id") @db.Uuid
+  createdAt DateTime      @default(now()) @map("created_at")
+  school    School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  holiday   Holiday       @relation(fields: [holidayId], references: [id], onDelete: Cascade)
+  academicClass AcademicClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([holidayId, classId])
+  @@index([schoolId, classId])
+  @@map("holiday_class_targets")
 }
 
 model Route {

@@ -16,8 +16,17 @@ export class AssignFeeDto {
   @IsUUID()
   sessionId?: string;
 
+  @IsOptional()
   @IsUUID()
-  studentId!: string;
+  studentId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  classId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  sectionId?: string;
 
   @IsUUID()
   feeStructureId!: string;

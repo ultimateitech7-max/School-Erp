@@ -94,6 +94,12 @@ export class ParentsController {
     return this.parentsService.getParentDashboard(currentUser);
   }
 
+  @Get('parent/branding')
+  @Roles(RoleType.PARENT)
+  getParentBranding(@CurrentUser() currentUser: JwtUser) {
+    return this.parentsService.getPortalBranding(currentUser);
+  }
+
   @Get('parent/attendance')
   @Roles(RoleType.PARENT)
   getParentAttendance(
@@ -122,6 +128,16 @@ export class ParentsController {
     );
   }
 
+  @Get('parent/fees/payments/:paymentId/receipt')
+  @Roles(RoleType.PARENT)
+  getParentFeeReceipt(
+    @CurrentUser() currentUser: JwtUser,
+    @Param('paymentId') paymentId: string,
+    @Query('studentId') studentId: string,
+  ) {
+    return this.parentsService.getParentFeeReceipt(currentUser, studentId, paymentId);
+  }
+
   @Get('parent/results')
   @Roles(RoleType.PARENT)
   getParentResults(
@@ -130,6 +146,20 @@ export class ParentsController {
     @Query('sessionId') sessionId?: string,
   ) {
     return this.parentsService.getParentResults(
+      currentUser,
+      studentId,
+      sessionId ?? null,
+    );
+  }
+
+  @Get('parent/exams')
+  @Roles(RoleType.PARENT)
+  getParentExams(
+    @CurrentUser() currentUser: JwtUser,
+    @Query('studentId') studentId: string,
+    @Query('sessionId') sessionId?: string,
+  ) {
+    return this.parentsService.getParentExams(
       currentUser,
       studentId,
       sessionId ?? null,

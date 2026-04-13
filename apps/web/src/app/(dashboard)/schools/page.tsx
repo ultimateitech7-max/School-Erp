@@ -5,6 +5,7 @@ import { startTransition, useDeferredValue, useEffect, useMemo, useState } from 
 import { Banner } from '@/components/ui/banner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { CsvDownloadButton } from '@/components/ui/csv-download-button';
 import { Field, Input } from '@/components/ui/field';
 import { Spinner } from '@/components/ui/spinner';
 import { useSchoolScope } from '@/hooks/use-school-scope';
@@ -17,6 +18,8 @@ import {
   type SchoolFormPayload,
   type SchoolRecord,
 } from '@/utils/api';
+import { schoolCsvColumns } from '@/utils/csv-exporters';
+import { buildCsvFilename, exportPaginatedApiCsv } from '@/utils/csv';
 
 const initialMeta: ApiMeta = {
   page: 1,
@@ -125,6 +128,29 @@ export default function SchoolsPage() {
     }
   };
 
+  const handleExportCsv = async () => {
+    try {
+      const count = await exportPaginatedApiCsv<SchoolRecord>({
+        path: '/schools',
+        params: {
+          search: deferredSearch || undefined,
+        },
+        columns: schoolCsvColumns,
+        filename: buildCsvFilename('schools'),
+      });
+
+      setMessage({
+        type: 'success',
+        text: `Downloaded ${count} school record${count === 1 ? '' : 's'} as CSV.`,
+      });
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Failed to export schools.',
+      });
+    }
+  };
+
   if (!canManageSchools) {
     return (
       <section className="card panel">
@@ -163,83 +189,85 @@ export default function SchoolsPage() {
         </article>
       </section>
 
-      <section className="users-grid">
-        <article className="card panel">
+      <section className="dashboard-stack">
+        <article className="card panel compact-panel-stack">
           <div className="students-toolbar-copy">
             <h2>Create School</h2>
             <p>Provision a new school workspace and its default school admin.</p>
           </div>
 
-          <form className="detail-list" onSubmit={handleSubmit}>
-            <Field label="School Name">
-              <Input
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, name: event.target.value }))
-                }
-                placeholder="Springfield Public School"
-                required
-                value={form.name}
-              />
-            </Field>
+          <form className="compact-panel-stack" onSubmit={handleSubmit}>
+            <div className="form-grid form-grid-application compact-form-grid">
+              <Field label="School Name">
+                <Input
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, name: event.target.value }))
+                  }
+                  placeholder="Springfield Public School"
+                  required
+                  value={form.name}
+                />
+              </Field>
 
-            <Field hint="Used for subdomain and internal code." label="School Code">
-              <Input
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    code: event.target.value.replace(/[^a-zA-Z0-9]/g, '').toLowerCase(),
-                  }))
-                }
-                placeholder="springfield"
-                required
-                value={form.code}
-              />
-            </Field>
+              <Field hint="Used for subdomain and internal code." label="School Code">
+                <Input
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      code: event.target.value.replace(/[^a-zA-Z0-9]/g, '').toLowerCase(),
+                    }))
+                  }
+                  placeholder="springfield"
+                  required
+                  value={form.code}
+                />
+              </Field>
 
-            <Field label="Admin Name">
-              <Input
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    adminName: event.target.value,
-                  }))
-                }
-                placeholder="School Admin"
-                required
-                value={form.adminName}
-              />
-            </Field>
+              <Field label="Admin Name">
+                <Input
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      adminName: event.target.value,
+                    }))
+                  }
+                  placeholder="School Admin"
+                  required
+                  value={form.adminName}
+                />
+              </Field>
 
-            <Field label="Admin Email">
-              <Input
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    adminEmail: event.target.value,
-                  }))
-                }
-                placeholder="admin@springfield.edu"
-                required
-                type="email"
-                value={form.adminEmail}
-              />
-            </Field>
+              <Field label="Admin Email">
+                <Input
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      adminEmail: event.target.value,
+                    }))
+                  }
+                  placeholder="admin@springfield.edu"
+                  required
+                  type="email"
+                  value={form.adminEmail}
+                />
+              </Field>
 
-            <Field hint="Minimum 8 characters." label="Admin Password">
-              <Input
-                minLength={8}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    adminPassword: event.target.value,
-                  }))
-                }
-                placeholder="Create a secure password"
-                required
-                type="password"
-                value={form.adminPassword}
-              />
-            </Field>
+              <Field label="Admin Password" hint="Minimum 8 characters.">
+                <Input
+                  minLength={8}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      adminPassword: event.target.value,
+                    }))
+                  }
+                  placeholder="Create a secure password"
+                  required
+                  type="password"
+                  value={form.adminPassword}
+                />
+              </Field>
+            </div>
 
             <div className="form-actions">
               <Button disabled={submitting} type="submit">
@@ -249,8 +277,8 @@ export default function SchoolsPage() {
           </form>
         </article>
 
-        <article className="card panel">
-          <div className="students-toolbar">
+        <article className="card panel compact-panel-stack">
+          <div className="students-toolbar compact-toolbar-panel">
             <div className="students-toolbar-copy">
               <h2>Schools</h2>
               <p>Search active tenants and switch straight into their school scope.</p>
@@ -262,6 +290,11 @@ export default function SchoolsPage() {
                 value={searchInput}
               />
             </Field>
+            <CsvDownloadButton
+              label="Download CSV"
+              loadingLabel="Exporting..."
+              onDownload={handleExportCsv}
+            />
           </div>
 
           {loading ? (
@@ -275,7 +308,7 @@ export default function SchoolsPage() {
             </div>
           ) : (
             <>
-              <div className="table-wrap">
+              <div className="table-wrap compact-table-wrap">
                 <table>
                   <thead>
                     <tr>

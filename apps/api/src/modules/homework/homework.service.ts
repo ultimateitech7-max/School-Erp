@@ -179,6 +179,48 @@ export class HomeworkService {
     };
   }
 
+  async findPortal(currentUser: JwtUser) {
+    const schoolId = this.resolveSchoolScope(currentUser, null);
+
+    if (currentUser.role !== RoleType.STUDENT && currentUser.role !== RoleType.PARENT) {
+      throw new ForbiddenException('Portal homework is available only for students and parents.');
+    }
+
+    const scopes =
+      currentUser.role === RoleType.STUDENT
+        ? await this.resolveStudentScopes(currentUser.id, schoolId)
+        : await this.resolveParentScopes(currentUser.id, schoolId);
+
+    if (!scopes.length) {
+      return {
+        success: true,
+        message: 'Portal homework fetched successfully.',
+        data: [],
+      };
+    }
+
+    const items = await this.prisma.homework.findMany({
+      where: {
+        schoolId,
+        OR: scopes.map((scope) => ({
+          classId: scope.classId,
+          OR: scope.sectionId
+            ? [{ sectionId: null }, { sectionId: scope.sectionId }]
+            : [{ sectionId: null }],
+        })),
+      },
+      include: homeworkInclude,
+      orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }],
+      take: 20,
+    });
+
+    return {
+      success: true,
+      message: 'Portal homework fetched successfully.',
+      data: items.map((item) => this.serialize(item)),
+    };
+  }
+
   async findOptions(currentUser: JwtUser, schoolIdOverride?: string | null) {
     const schoolId = this.resolveSchoolScope(currentUser, schoolIdOverride);
     const [classes, subjects, teachers] = await Promise.all([
@@ -356,6 +398,64 @@ export class HomeworkService {
         }),
       ),
     );
+  }
+
+  private async resolveStudentScopes(userId: string, schoolId: string) {
+    const admissions = await this.prisma.admission.findMany({
+      where: {
+        schoolId,
+        admissionStatus: {
+          in: ['ACTIVE', 'PROMOTED'],
+        },
+        student: {
+          userId,
+        },
+      },
+      orderBy: [{ admissionDate: 'desc' }, { createdAt: 'desc' }],
+      select: {
+        classId: true,
+        sectionId: true,
+      },
+    });
+
+    return this.serializeScopes(admissions);
+  }
+
+  private async resolveParentScopes(userId: string, schoolId: string) {
+    const admissions = await this.prisma.admission.findMany({
+      where: {
+        schoolId,
+        admissionStatus: {
+          in: ['ACTIVE', 'PROMOTED'],
+        },
+        student: {
+          parentLinks: {
+            some: {
+              parent: {
+                userId,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ admissionDate: 'desc' }, { createdAt: 'desc' }],
+      select: {
+        classId: true,
+        sectionId: true,
+      },
+    });
+
+    return this.serializeScopes(admissions);
+  }
+
+  private serializeScopes(items: Array<{ classId: string; sectionId: string | null }>) {
+    const deduped = new Map<string, { classId: string; sectionId: string | null }>();
+
+    for (const item of items) {
+      deduped.set(`${item.classId}:${item.sectionId ?? 'all'}`, item);
+    }
+
+    return [...deduped.values()];
   }
 
   private resolveSchoolScope(currentUser: JwtUser, schoolIdOverride?: string | null) {

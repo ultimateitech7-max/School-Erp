@@ -4,6 +4,7 @@ import { startTransition, useDeferredValue, useEffect, useState } from 'react';
 import { ClassForm } from './components/ClassForm';
 import { ClassTable } from './components/ClassTable';
 import { SubjectAssignmentPanel } from './components/SubjectAssignmentPanel';
+import { CsvDownloadButton } from '@/components/ui/csv-download-button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   apiFetch,
@@ -17,6 +18,8 @@ import {
   type UserStatus,
 } from '@/utils/api';
 import { getStoredAuthSession, type AuthSession } from '@/utils/auth-storage';
+import { classCsvColumns } from '@/utils/csv-exporters';
+import { buildCsvFilename, exportPaginatedApiCsv } from '@/utils/csv';
 
 const initialMeta: ApiMeta = {
   page: 1,
@@ -244,6 +247,30 @@ export default function ClassesPage() {
     }
   };
 
+  const handleExportCsv = async () => {
+    try {
+      const count = await exportPaginatedApiCsv<AcademicClassRecord>({
+        path: '/classes',
+        params: {
+          search: deferredSearch || undefined,
+          isActive: statusFilter ? statusFilter === 'ACTIVE' : undefined,
+        },
+        columns: classCsvColumns,
+        filename: buildCsvFilename(`classes-${statusFilter || 'all'}`),
+      });
+
+      setMessage({
+        type: 'success',
+        text: `Downloaded ${count} class record${count === 1 ? '' : 's'} as CSV.`,
+      });
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Failed to export classes.',
+      });
+    }
+  };
+
   if (!sessionLoaded) {
     return (
       <section className="card panel">
@@ -317,6 +344,11 @@ export default function ClassesPage() {
               Reset
             </button>
           ) : null}
+          <CsvDownloadButton
+            label="Download CSV"
+            loadingLabel="Exporting..."
+            onDownload={handleExportCsv}
+          />
         </div>
       </section>
 

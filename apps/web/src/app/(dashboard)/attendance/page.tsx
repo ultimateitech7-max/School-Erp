@@ -5,7 +5,9 @@ import { AttendanceForm } from './components/AttendanceForm';
 import { AttendanceSummary } from './components/AttendanceSummary';
 import { AttendanceTable } from './components/AttendanceTable';
 import { BulkAttendanceForm } from './components/BulkAttendanceForm';
+import { CsvDownloadButton } from '@/components/ui/csv-download-button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Spinner } from '@/components/ui/spinner';
 import {
   apiFetch,
   createQueryString,
@@ -20,6 +22,8 @@ import {
   type UpdateAttendancePayload,
 } from '@/utils/api';
 import { getStoredAuthSession, type AuthSession } from '@/utils/auth-storage';
+import { attendanceCsvColumns } from '@/utils/csv-exporters';
+import { buildCsvFilename, exportPaginatedApiCsv } from '@/utils/csv';
 
 const initialMeta: ApiMeta = {
   page: 1,
@@ -44,7 +48,9 @@ const emptySummary: AttendanceSummaryRecord = {
 };
 
 export default function AttendancePage() {
-  const [session, setSession] = useState<AuthSession | null>(null);
+  const [session, setSession] = useState<AuthSession | null>(() =>
+    getStoredAuthSession(),
+  );
   const [options, setOptions] = useState<AttendanceOptionsPayload>(emptyOptions);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [summary, setSummary] = useState<AttendanceSummaryRecord>(emptySummary);
@@ -185,6 +191,8 @@ export default function AttendancePage() {
     session?.user.role === 'SUPER_ADMIN' ||
     session?.user.role === 'SCHOOL_ADMIN' ||
     session?.user.role === 'TEACHER';
+  const initialContentLoading =
+    loadingOptions && loadingRecords && loadingSummary && records.length === 0;
 
   const filteredStudents = useMemo(() => {
     return options.students.filter((student) => {
@@ -322,8 +330,49 @@ export default function AttendancePage() {
     }
   };
 
+  const handleExportCsv = async () => {
+    try {
+      const count = await exportPaginatedApiCsv<AttendanceRecord>({
+        path: '/attendance',
+        params: {
+          search: deferredSearch || undefined,
+          attendanceDate,
+          classId: classId || undefined,
+          sectionId: sectionId || undefined,
+          studentId: studentId || undefined,
+          status: status || undefined,
+        },
+        columns: attendanceCsvColumns,
+        filename: buildCsvFilename('attendance-records'),
+      });
+
+      setMessage({
+        type: 'success',
+        text: `Downloaded ${count} attendance record${count === 1 ? '' : 's'} as CSV.`,
+      });
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text:
+          error instanceof Error ? error.message : 'Failed to export attendance.',
+      });
+    }
+  };
+
   if (!session) {
-    return <section className="card panel">Loading attendance module...</section>;
+    return (
+      <section className="card panel">
+        <Spinner label="Loading attendance module..." />
+      </section>
+    );
+  }
+
+  if (initialContentLoading) {
+    return (
+      <section className="card panel">
+        <Spinner label="Loading attendance content..." />
+      </section>
+    );
   }
 
   if (!canManageAttendance) {
@@ -438,6 +487,12 @@ export default function AttendancePage() {
                 ))}
               </select>
             </label>
+
+            <CsvDownloadButton
+              label="Download CSV"
+              loadingLabel="Exporting..."
+              onDownload={handleExportCsv}
+            />
           </div>
         </div>
       </section>

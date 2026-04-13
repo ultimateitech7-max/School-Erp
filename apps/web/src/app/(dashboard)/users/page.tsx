@@ -4,6 +4,7 @@ import { startTransition, useDeferredValue, useEffect, useState } from 'react';
 import { UserFilters } from './components/UserFilters';
 import { UserForm } from './components/UserForm';
 import { UserTable } from './components/UserTable';
+import { CsvDownloadButton } from '@/components/ui/csv-download-button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   apiFetch,
@@ -17,6 +18,8 @@ import {
   type UserStatus,
 } from '@/utils/api';
 import { getStoredAuthSession, type AuthSession } from '@/utils/auth-storage';
+import { userCsvColumns } from '@/utils/csv-exporters';
+import { buildCsvFilename, exportPaginatedApiCsv } from '@/utils/csv';
 
 const initialMeta: ApiMeta = {
   page: 1,
@@ -240,6 +243,31 @@ export default function UsersPage() {
     }
   };
 
+  const handleExportCsv = async () => {
+    try {
+      const count = await exportPaginatedApiCsv<UserRecord>({
+        path: '/users',
+        params: {
+          search: deferredSearch || undefined,
+          role: roleFilter || undefined,
+          status: statusFilter || undefined,
+        },
+        columns: userCsvColumns,
+        filename: buildCsvFilename(`users-${roleFilter || 'all'}-${statusFilter || 'all'}`),
+      });
+
+      setMessage({
+        type: 'success',
+        text: `Downloaded ${count} user record${count === 1 ? '' : 's'} as CSV.`,
+      });
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Failed to export users.',
+      });
+    }
+  };
+
   if (!sessionLoaded) {
     return (
       <section className="card panel">
@@ -276,6 +304,13 @@ export default function UsersPage() {
   return (
     <div className="users-page">
       <UserFilters
+        actions={
+          <CsvDownloadButton
+            label="Download CSV"
+            loadingLabel="Exporting..."
+            onDownload={handleExportCsv}
+          />
+        }
         searchInput={searchInput}
         roleFilter={roleFilter}
         roles={options.roles}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import type { ExamResultsPayload, StudentResultsPayload } from '@/utils/api';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Table, TableCell, TableHeadCell, TableWrap } from '@/components/ui/table';
@@ -10,6 +10,7 @@ interface ResultsTableProps {
   studentResults: StudentResultsPayload | null;
   loadingExamResults: boolean;
   loadingStudentResults: boolean;
+  actions?: ReactNode;
 }
 
 export function ResultsTable({
@@ -17,6 +18,7 @@ export function ResultsTable({
   studentResults,
   loadingExamResults,
   loadingStudentResults,
+  actions,
 }: ResultsTableProps) {
   const [view, setView] = useState<'exam' | 'student'>('exam');
 
@@ -53,6 +55,7 @@ export function ResultsTable({
           >
             Student View
           </button>
+          {actions}
         </div>
       </div>
 

@@ -2,6 +2,7 @@
 
 import { startTransition, useDeferredValue, useEffect, useState } from 'react';
 import { Banner } from '@/components/ui/banner';
+import { CsvDownloadButton } from '@/components/ui/csv-download-button';
 import { Field, Input, Select } from '@/components/ui/field';
 import {
   apiFetch,
@@ -12,6 +13,8 @@ import {
   type HomeworkOptionsPayload,
   type HomeworkRecord,
 } from '@/utils/api';
+import { homeworkCsvColumns } from '@/utils/csv-exporters';
+import { buildCsvFilename, exportPaginatedApiCsv } from '@/utils/csv';
 import { HomeworkForm } from './HomeworkForm';
 import { HomeworkTable } from './HomeworkTable';
 
@@ -107,6 +110,31 @@ export default function HomeworkPage() {
     }
   };
 
+  const handleExportCsv = async () => {
+    try {
+      const count = await exportPaginatedApiCsv<HomeworkRecord>({
+        path: '/homework',
+        params: {
+          search: deferredSearch || undefined,
+          classId: classId || undefined,
+          sectionId: sectionId || undefined,
+        },
+        columns: homeworkCsvColumns,
+        filename: buildCsvFilename('homework'),
+      });
+
+      setMessage({
+        type: 'success',
+        text: `Downloaded ${count} homework record${count === 1 ? '' : 's'} as CSV.`,
+      });
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Failed to export homework.',
+      });
+    }
+  };
+
   return (
     <div className="dashboard-stack">
       <section className="card panel academic-toolbar">
@@ -149,6 +177,11 @@ export default function HomeworkPage() {
               ))}
             </Select>
           </Field>
+          <CsvDownloadButton
+            label="Download CSV"
+            loadingLabel="Exporting..."
+            onDownload={handleExportCsv}
+          />
         </div>
       </section>
 

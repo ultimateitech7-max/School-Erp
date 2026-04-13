@@ -1,7 +1,7 @@
 'use client';
 
 import type { FormEvent } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import type {
@@ -26,6 +26,10 @@ interface TimetableFormProps {
   options: TimetableOptionsPayload | null;
   submitting: boolean;
   onSubmit: (payload: TimetableFormPayload) => Promise<void>;
+  selectedClassId: string;
+  selectedClassName: string;
+  selectedSectionId: string;
+  selectedSectionName: string;
   initialEntry?: TimetableEntryRecord | null;
   submitLabel?: string;
   onCancel?: () => void;
@@ -35,6 +39,10 @@ export function TimetableForm({
   options,
   submitting,
   onSubmit,
+  selectedClassId,
+  selectedClassName,
+  selectedSectionId,
+  selectedSectionName,
   initialEntry = null,
   submitLabel,
   onCancel,
@@ -50,8 +58,8 @@ export function TimetableForm({
     }
 
     setForm({
-      classId: initialEntry.class.id,
-      sectionId: initialEntry.section?.id ?? '',
+      classId: selectedClassId || initialEntry.class.id,
+      sectionId: selectedSectionId || initialEntry.section?.id || '',
       subjectId: initialEntry.subject.id,
       teacherId: initialEntry.teacher.id,
       dayOfWeek: initialEntry.dayOfWeek,
@@ -60,37 +68,43 @@ export function TimetableForm({
       endTime: initialEntry.endTime,
     });
     setError(null);
-  }, [initialEntry]);
+  }, [initialEntry, selectedClassId, selectedSectionId]);
 
-  const sections = useMemo(() => {
-    const matchedClass = options?.classes.find((item) => item.id === form.classId);
-    return matchedClass?.sections ?? [];
-  }, [form.classId, options?.classes]);
+  useEffect(() => {
+    setForm((current) => ({
+      ...current,
+      classId: selectedClassId,
+      sectionId: selectedSectionId,
+    }));
+  }, [selectedClassId, selectedSectionId]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
 
-    if (!form.classId || !form.subjectId || !form.teacherId) {
-      setError('Class, subject, and teacher are required.');
+    if (!selectedClassId || !form.subjectId || !form.teacherId) {
+      setError('Select class from the top bar, then choose subject and teacher.');
       return;
     }
 
     await onSubmit({
       ...form,
-      sectionId: form.sectionId || undefined,
+      classId: selectedClassId,
+      sectionId: selectedSectionId || undefined,
     });
 
     if (!initialEntry) {
       setForm({
         ...initialForm,
+        classId: selectedClassId,
+        sectionId: selectedSectionId,
         dayOfWeek: form.dayOfWeek,
       });
     }
   };
 
   return (
-    <form className="card panel timetable-form" onSubmit={handleSubmit}>
+    <form className="card panel timetable-form compact-panel-stack" onSubmit={handleSubmit}>
       <div className="panel-heading compact-heading">
         <div>
           <h3>{initialEntry ? 'Edit Timetable Entry' : 'Create Timetable Entry'}</h3>
@@ -102,47 +116,19 @@ export function TimetableForm({
         </div>
       </div>
 
-      <div className="form-grid">
-        <Field label="Class" error={error && !form.classId ? error : undefined}>
-          <Select
-            value={form.classId}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                classId: event.target.value,
-                sectionId: '',
-              }))
-            }
-          >
-            <option value="">Select class</option>
-            {options?.classes.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
+      <div className="scope-summary-grid">
+        <div className="scope-summary-item">
+          <span>Selected Class</span>
+          <strong>{selectedClassName || 'Choose class from top filter'}</strong>
+        </div>
+        <div className="scope-summary-item">
+          <span>Selected Section</span>
+          <strong>{selectedSectionName || 'Class-wide'}</strong>
+        </div>
+      </div>
 
-        <Field label="Section">
-          <Select
-            value={form.sectionId}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                sectionId: event.target.value,
-              }))
-            }
-          >
-            <option value="">Class-wide</option>
-            {sections.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        <Field label="Subject">
+      <div className="form-grid compact-form-grid">
+        <Field label="Subject" error={error && !selectedClassId ? error : undefined}>
           <Select
             value={form.subjectId}
             onChange={(event) =>
@@ -243,11 +229,11 @@ export function TimetableForm({
 
       <div className="form-actions">
         {initialEntry && onCancel ? (
-          <Button onClick={onCancel} type="button" variant="ghost">
+          <Button onClick={onCancel} size="sm" type="button" variant="ghost">
             Cancel
           </Button>
         ) : null}
-        <Button disabled={submitting} type="submit">
+        <Button disabled={submitting} size="sm" type="submit">
           {submitting ? 'Saving...' : submitLabel ?? (initialEntry ? 'Save Changes' : 'Add Entry')}
         </Button>
       </div>

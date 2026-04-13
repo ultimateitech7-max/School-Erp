@@ -1,5 +1,7 @@
 'use client';
 
+import type { ReactNode } from 'react';
+import { Button } from '@/components/ui/button';
 import type { ApiMeta, PaymentRecord } from '@/utils/api';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PaginationControls } from '@/components/ui/pagination-controls';
@@ -10,6 +12,9 @@ interface PaymentHistoryProps {
   loading: boolean;
   meta: ApiMeta;
   onPageChange: (page: number) => void;
+  onDownloadReceipt?: (payment: PaymentRecord) => void;
+  downloadingReceiptId?: string | null;
+  actions?: ReactNode;
 }
 
 export function PaymentHistory({
@@ -17,6 +22,9 @@ export function PaymentHistory({
   loading,
   meta,
   onPageChange,
+  onDownloadReceipt,
+  downloadingReceiptId,
+  actions,
 }: PaymentHistoryProps) {
   return (
     <section className="card panel">
@@ -27,6 +35,7 @@ export function PaymentHistory({
             {meta.total} payment{meta.total === 1 ? '' : 's'} recorded
           </p>
         </div>
+        {actions}
       </div>
 
       {loading ? <p>Loading payments...</p> : null}
@@ -50,6 +59,7 @@ export function PaymentHistory({
                   <TableHeadCell>Amount</TableHeadCell>
                   <TableHeadCell>Method</TableHeadCell>
                   <TableHeadCell>Date</TableHeadCell>
+                  <TableHeadCell>Receipt File</TableHeadCell>
                 </tr>
               </thead>
               <tbody>
@@ -66,6 +76,23 @@ export function PaymentHistory({
                     <TableCell>{payment.amount.toFixed(2)}</TableCell>
                     <TableCell>{payment.paymentMethod}</TableCell>
                     <TableCell>{new Date(payment.paymentDate).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      {onDownloadReceipt ? (
+                        <Button
+                          disabled={downloadingReceiptId === payment.id}
+                          onClick={() => onDownloadReceipt(payment)}
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          {downloadingReceiptId === payment.id
+                            ? 'Preparing...'
+                            : 'Download Receipt'}
+                        </Button>
+                      ) : (
+                        '-'
+                      )}
+                    </TableCell>
                   </tr>
                 ))}
               </tbody>

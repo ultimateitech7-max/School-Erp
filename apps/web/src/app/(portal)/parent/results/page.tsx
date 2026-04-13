@@ -21,10 +21,15 @@ export default function ParentResultsPage() {
   const [payload, setPayload] = useState<ParentPortalDetailPayload | null>(null);
   const [studentId, setStudentId] = useState('');
   const [sessionId, setSessionId] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loadingDashboard, setLoadingDashboard] = useState(true);
+  const [loadingDetail, setLoadingDetail] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    setLoadingDashboard(true);
+    setPayload(null);
+    setMessage(null);
+
     void apiFetch<ApiSuccessResponse<ParentDashboardPayload>>('/parent/dashboard')
       .then((response) => {
         setDashboard(response.data);
@@ -32,20 +37,28 @@ export default function ParentResultsPage() {
           response.data.children.find((child) => child.id === requestedStudentId)?.id ??
           response.data.children[0]?.id ??
           '';
-        setStudentId((current) => current || defaultStudentId);
+        setStudentId(defaultStudentId);
       })
       .catch((error) => {
         setMessage(error instanceof Error ? error.message : 'Failed to load children.');
+      })
+      .finally(() => {
+        setLoadingDashboard(false);
       });
   }, [requestedStudentId]);
 
   useEffect(() => {
-    if (!studentId) {
-      setLoading(false);
+    if (loadingDashboard) {
       return;
     }
 
-    setLoading(true);
+    if (!studentId) {
+      setPayload(null);
+      setLoadingDetail(false);
+      return;
+    }
+
+    setLoadingDetail(true);
 
     void apiFetch<ApiSuccessResponse<ParentPortalDetailPayload>>(
       `/parent/results${createQueryString({
@@ -60,11 +73,11 @@ export default function ParentResultsPage() {
         setMessage(error instanceof Error ? error.message : 'Failed to load results.');
       })
       .finally(() => {
-        setLoading(false);
+        setLoadingDetail(false);
       });
-  }, [studentId, sessionId]);
+  }, [loadingDashboard, studentId, sessionId]);
 
-  if (loading) {
+  if (loadingDashboard || loadingDetail) {
     return (
       <section className="card panel">
         <Spinner label="Loading results..." />

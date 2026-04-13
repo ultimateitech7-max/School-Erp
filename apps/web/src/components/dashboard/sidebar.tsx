@@ -4,8 +4,10 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LogoutButton } from './logout-button';
+import type { SchoolBrandingView } from '@/hooks/use-school-branding';
 import { useAuth } from '@/hooks/use-auth';
 import { getStoredAuthSession, type AuthSession } from '@/utils/auth-storage';
+import type { UserRole } from '@/utils/api';
 import {
   AcademicIcon,
   AttendanceIcon,
@@ -24,36 +26,196 @@ import {
   UsersIcon,
 } from '@/components/ui/icons';
 
-const baseNavItems = [
-  { href: '/', label: 'Dashboard', icon: DashboardIcon },
-  { href: '/students', label: 'Students', icon: StudentsIcon },
-  { href: '/attendance', label: 'Attendance', icon: AttendanceIcon },
-];
-const superAdminNavItems = [
-  { href: '/schools', label: 'Schools', icon: UsersIcon },
-];
-const adminNavItems = [
-  { href: '/academic-sessions', label: 'Academic Sessions', icon: AcademicIcon },
-  { href: '/admissions', label: 'Admissions', icon: StudentsIcon },
-  { href: '/parents', label: 'Parents', icon: UsersIcon },
-  { href: '/promotions', label: 'Promotions', icon: AcademicIcon },
-  { href: '/users', label: 'Users & Staff', icon: UsersIcon },
-  { href: '/fees', label: 'Fees', icon: FeesIcon },
-  { href: '/classes', label: 'Classes', icon: AcademicIcon },
-  { href: '/sections', label: 'Sections', icon: AcademicIcon },
-  { href: '/subjects', label: 'Subjects', icon: AcademicIcon },
-  { href: '/timetables', label: 'Timetables', icon: AcademicIcon },
-  { href: '/exam-date-sheets', label: 'Exam Date Sheets', icon: ExamsIcon },
-  { href: '/homework', label: 'Homework', icon: HomeworkIcon },
-  { href: '/reports', label: 'Reports', icon: ReportIcon },
-  { href: '/holidays', label: 'Holidays', icon: CalendarIcon },
-  { href: '/notices', label: 'Notices', icon: NoticeIcon },
-  { href: '/messages/inbox', label: 'Messages', icon: MessageIcon },
-  { href: '/exams', label: 'Exams & Results', icon: ExamsIcon },
-  { href: '/settings', label: 'Settings', icon: SettingsIcon },
+interface NavItem {
+  href: string;
+  label: string;
+  icon: typeof DashboardIcon;
+  roles: UserRole[];
+  requiredPermissions?: string[];
+}
+
+const dashboardNavItems: NavItem[] = [
+  {
+    href: '/',
+    label: 'Dashboard',
+    icon: DashboardIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'STAFF'],
+  },
+  {
+    href: '/activity-logs',
+    label: 'Activity Logs',
+    icon: ReportIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'],
+  },
+  {
+    href: '/schools',
+    label: 'Schools',
+    icon: UsersIcon,
+    roles: ['SUPER_ADMIN'],
+  },
+  {
+    href: '/students',
+    label: 'Students',
+    icon: StudentsIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'],
+    requiredPermissions: ['students.read'],
+  },
+  {
+    href: '/attendance',
+    label: 'Attendance',
+    icon: AttendanceIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'],
+    requiredPermissions: ['attendance.read'],
+  },
+  {
+    href: '/academic-sessions',
+    label: 'Academic Sessions',
+    icon: AcademicIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'],
+    requiredPermissions: ['academics.read'],
+  },
+  {
+    href: '/admissions',
+    label: 'Admissions',
+    icon: StudentsIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'],
+    requiredPermissions: ['students.read'],
+  },
+  {
+    href: '/parents',
+    label: 'Parents',
+    icon: UsersIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'],
+    requiredPermissions: ['students.read'],
+  },
+  {
+    href: '/promotions',
+    label: 'Promotions',
+    icon: AcademicIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'],
+    requiredPermissions: ['academics.read'],
+  },
+  {
+    href: '/users',
+    label: 'Users & Staff',
+    icon: UsersIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'],
+  },
+  {
+    href: '/fees',
+    label: 'Fees',
+    icon: FeesIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'],
+  },
+  {
+    href: '/fee-submissions',
+    label: 'Fee Submissions',
+    icon: FeesIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'],
+    requiredPermissions: ['fees.manage'],
+  },
+  {
+    href: '/classes',
+    label: 'Classes',
+    icon: AcademicIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'],
+    requiredPermissions: ['academics.read'],
+  },
+  {
+    href: '/sections',
+    label: 'Sections',
+    icon: AcademicIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'],
+    requiredPermissions: ['academics.read'],
+  },
+  {
+    href: '/subjects',
+    label: 'Subjects',
+    icon: AcademicIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'],
+    requiredPermissions: ['academics.read'],
+  },
+  {
+    href: '/timetables',
+    label: 'Timetables',
+    icon: AcademicIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'],
+    requiredPermissions: ['academics.read'],
+  },
+  {
+    href: '/exam-date-sheets',
+    label: 'Exam Date Sheets',
+    icon: ExamsIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'],
+    requiredPermissions: ['exams.read'],
+  },
+  {
+    href: '/homework',
+    label: 'Homework',
+    icon: HomeworkIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'],
+    requiredPermissions: ['homework.read'],
+  },
+  {
+    href: '/reports',
+    label: 'Reports',
+    icon: ReportIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'],
+    requiredPermissions: ['reports.read'],
+  },
+  {
+    href: '/holidays',
+    label: 'Holidays',
+    icon: CalendarIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'],
+    requiredPermissions: ['calendar.read'],
+  },
+  {
+    href: '/calendar',
+    label: 'Calendar',
+    icon: CalendarIcon,
+    roles: ['TEACHER', 'STAFF'],
+    requiredPermissions: ['calendar.read'],
+  },
+  {
+    href: '/notices',
+    label: 'Notices',
+    icon: NoticeIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'],
+    requiredPermissions: ['communication.read'],
+  },
+  {
+    href: '/announcements',
+    label: 'Announcements',
+    icon: NoticeIcon,
+    roles: ['TEACHER', 'STAFF'],
+  },
+  {
+    href: '/messages/inbox',
+    label: 'Messages',
+    icon: MessageIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'STAFF'],
+  },
+  {
+    href: '/exams',
+    label: 'Exams & Results',
+    icon: ExamsIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'],
+    requiredPermissions: ['exams.read'],
+  },
+  {
+    href: '/settings',
+    label: 'Settings',
+    icon: SettingsIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'],
+  },
 ];
 
-export function DashboardSidebar() {
+interface DashboardSidebarProps {
+  branding?: SchoolBrandingView | null;
+}
+
+export function DashboardSidebar({ branding }: DashboardSidebarProps) {
   const pathname = usePathname();
   const { logout } = useAuth();
   const [session, setSession] = useState<AuthSession | null>(() =>
@@ -69,14 +231,29 @@ export function DashboardSidebar() {
     setOpen(false);
   }, [pathname]);
 
-  const navItems = useMemo(
-    () =>
-      session?.user.role === 'SUPER_ADMIN'
-        ? [...baseNavItems, ...superAdminNavItems, ...adminNavItems]
-        : session?.user.role === 'SCHOOL_ADMIN'
-          ? [...baseNavItems, ...adminNavItems]
-        : baseNavItems,
-    [session?.user.role],
+  const resolvedNavItems = useMemo(
+    () => {
+      if (!session?.user.role) {
+        return [];
+      }
+
+      const grantedPermissions = new Set(session.permissions ?? []);
+
+      return dashboardNavItems.filter((item) => {
+        if (!item.roles.includes(session.user.role)) {
+          return false;
+        }
+
+        if (!item.requiredPermissions?.length) {
+          return true;
+        }
+
+        return item.requiredPermissions.every((permission) =>
+          grantedPermissions.has(permission),
+        );
+      });
+    },
+    [session?.permissions, session?.user.role],
   );
 
   return (
@@ -99,7 +276,7 @@ export function DashboardSidebar() {
       <aside className={`sidebar card${open ? ' sidebar-open' : ''}`}>
         <div className="sidebar-rail">
           <div className="sidebar-rail-nav">
-            {navItems.map((item) => {
+            {resolvedNavItems.map((item) => {
               const isActive =
                 pathname === item.href ||
                 (item.href === '/' && pathname === '/dashboard') ||
@@ -133,12 +310,25 @@ export function DashboardSidebar() {
         <div className="sidebar-expanded">
           <div className="sidebar-brand">
             <div className="sidebar-brand-mark">
-              <DashboardIcon />
+              {branding?.logoUrl ? (
+                <img
+                  alt={`${branding.schoolName} logo`}
+                  className="school-brand-logo"
+                  src={branding.logoUrl}
+                />
+              ) : (
+                <DashboardIcon />
+              )}
             </div>
             <div className="sidebar-brand-copy">
-              <span className="eyebrow">School OS</span>
-              <h2>Operations Hub</h2>
-              <p className="muted-text">Premium admin workspace</p>
+              <span className="eyebrow">
+                {branding?.schoolCode?.toUpperCase() ?? 'School Workspace'}
+              </span>
+              <h2>{branding?.schoolName ?? 'Operations Hub'}</h2>
+              <p className="muted-text">
+                {branding?.website?.replace(/^https?:\/\//, '') ??
+                  'Premium admin workspace'}
+              </p>
             </div>
           </div>
 
@@ -155,7 +345,7 @@ export function DashboardSidebar() {
           </div>
 
           <nav className="nav-list">
-            {navItems.map((item) => {
+            {resolvedNavItems.map((item) => {
               const isActive =
                 pathname === item.href ||
                 (item.href === '/' && pathname === '/dashboard') ||

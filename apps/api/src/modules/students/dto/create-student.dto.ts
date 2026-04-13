@@ -3,6 +3,7 @@ import {
   IsDateString,
   IsEmail,
   IsEnum,
+  MinLength,
   IsOptional,
   IsString,
   IsUUID,
@@ -52,6 +53,12 @@ export class CreateStudentDto {
   @MaxLength(30)
   @Transform(({ value }) => (value ? String(value).trim() : undefined))
   phone?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  @MaxLength(120)
+  portalPassword?: string;
 
   @IsOptional()
   @IsEnum(Gender)

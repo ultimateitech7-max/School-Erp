@@ -36,4 +36,20 @@ export class HolidaysController {
   findAll(@CurrentUser() currentUser: JwtUser, @Query() query: HolidayQueryDto) {
     return this.holidaysService.findAll(currentUser, query);
   }
+
+  @Get('portal')
+  @Roles(RoleType.TEACHER, RoleType.STAFF, RoleType.PARENT, RoleType.STUDENT)
+  findPortal(@CurrentUser() currentUser: JwtUser) {
+    return this.holidaysService.findPortal(currentUser);
+  }
+
+  @Get('options')
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN)
+  @Permissions('calendar.manage')
+  findOptions(
+    @CurrentUser() currentUser: JwtUser,
+    @Query('schoolId') schoolId?: string,
+  ) {
+    return this.holidaysService.findOptions(currentUser, schoolId ?? null);
+  }
 }

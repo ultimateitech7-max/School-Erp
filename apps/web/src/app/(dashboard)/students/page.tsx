@@ -4,6 +4,7 @@ import { startTransition, useDeferredValue, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { StudentForm } from './components/StudentForm';
 import { StudentTable } from './components/StudentTable';
+import { CsvDownloadButton } from '@/components/ui/csv-download-button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   apiFetch,
@@ -14,6 +15,8 @@ import {
   type StudentOptionsPayload,
   type StudentRecord,
 } from '@/utils/api';
+import { studentCsvColumns } from '@/utils/csv-exporters';
+import { buildCsvFilename, exportPaginatedApiCsv } from '@/utils/csv';
 
 const initialMeta: ApiMeta = {
   page: 1,
@@ -183,6 +186,30 @@ export default function StudentsPage() {
     }
   };
 
+  const handleExportCsv = async () => {
+    try {
+      const count = await exportPaginatedApiCsv<StudentRecord>({
+        path: '/students',
+        params: {
+          search: deferredSearch || undefined,
+        },
+        columns: studentCsvColumns,
+        filename: buildCsvFilename('students'),
+      });
+
+      setMessage({
+        type: 'success',
+        text: `Downloaded ${count} student record${count === 1 ? '' : 's'} as CSV.`,
+      });
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text:
+          error instanceof Error ? error.message : 'Failed to export students.',
+      });
+    }
+  };
+
   const confirmDelete = async () => {
     if (!pendingDeleteStudent) {
       return;
@@ -265,6 +292,11 @@ export default function StudentsPage() {
             >
               {registrationLookupLoading ? 'Searching...' : 'Find Student'}
             </button>
+            <CsvDownloadButton
+              label="Download CSV"
+              loadingLabel="Exporting..."
+              onDownload={handleExportCsv}
+            />
           </div>
           {editingStudent ? (
             <button

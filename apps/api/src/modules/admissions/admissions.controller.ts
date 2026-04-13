@@ -19,6 +19,7 @@ import { JwtUser } from '../auth/strategies/jwt.strategy';
 import { AdmissionsService } from './admissions.service';
 import { AdmissionQueryDto } from './dto/admission-query.dto';
 import { CreateAdmissionDto } from './dto/create-admission.dto';
+import { EnrollAdmissionDto } from './dto/enroll-admission.dto';
 import { UpdateAdmissionStatusDto } from './dto/update-admission-status.dto';
 
 @Controller('admissions')
@@ -70,7 +71,8 @@ export class AdmissionsController {
   enroll(
     @CurrentUser() currentUser: JwtUser,
     @Param('id') id: string,
+    @Body() dto: EnrollAdmissionDto,
   ) {
-    return this.admissionsService.enroll(currentUser, id);
+    return this.admissionsService.enroll(currentUser, id, dto);
   }
 }

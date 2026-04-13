@@ -201,6 +201,120 @@ export class MessagesService {
     };
   }
 
+  async remove(currentUser: JwtUser, id: string) {
+    const schoolId = this.resolveUserSchoolScope(currentUser);
+    const message = await this.prisma.message.findFirst({
+      where: {
+        id,
+        schoolId,
+        OR: [
+          {
+            senderUserId: currentUser.id,
+          },
+          {
+            recipientUserId: currentUser.id,
+          },
+        ],
+      },
+      include: messageInclude,
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found.');
+    }
+
+    await this.prisma.message.delete({
+      where: {
+        id: message.id,
+      },
+    });
+
+    await this.auditService.write({
+      action: 'messages.delete',
+      entity: 'message',
+      entityId: message.id,
+      actorUserId: currentUser.id,
+      schoolId,
+      metadata: {
+        senderUserId: message.senderUserId,
+        recipientUserId: message.recipientUserId,
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Message deleted successfully.',
+      data: {
+        id: message.id,
+        deleted: true,
+      },
+    };
+  }
+
+  async removeThread(currentUser: JwtUser, otherUserId: string) {
+    const schoolId = this.resolveUserSchoolScope(currentUser);
+
+    if (otherUserId === currentUser.id) {
+      throw new BadRequestException('You cannot delete a chat with yourself.');
+    }
+
+    const otherUser = await this.prisma.user.findFirst({
+      where: {
+        id: otherUserId,
+        schoolId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        fullName: true,
+      },
+    });
+
+    if (!otherUser) {
+      throw new NotFoundException('Chat user not found.');
+    }
+
+    const result = await this.prisma.message.deleteMany({
+      where: {
+        schoolId,
+        OR: [
+          {
+            senderUserId: currentUser.id,
+            recipientUserId: otherUserId,
+          },
+          {
+            senderUserId: otherUserId,
+            recipientUserId: currentUser.id,
+          },
+        ],
+      },
+    });
+
+    await this.auditService.write({
+      action: 'messages.thread.delete',
+      entity: 'message_thread',
+      entityId: `${currentUser.id}:${otherUserId}`,
+      actorUserId: currentUser.id,
+      schoolId,
+      metadata: {
+        otherUserId,
+        otherUserName: otherUser.fullName,
+        deletedCount: result.count,
+      },
+    });
+
+    return {
+      success: true,
+      message: result.count
+        ? 'Chat deleted successfully.'
+        : 'No chat history found for this user.',
+      data: {
+        otherUserId,
+        deletedCount: result.count,
+      },
+    };
+  }
+
   async findRecipients(
     currentUser: JwtUser,
     schoolIdOverride?: string | null,
@@ -269,25 +383,8 @@ export class MessagesService {
     }
   }
 
-  private getAllowedRecipientRoles(senderRole: RoleType): RoleType[] {
-    switch (senderRole) {
-      case RoleType.SUPER_ADMIN:
-      case RoleType.SCHOOL_ADMIN:
-      case RoleType.STAFF:
-        return [
-          RoleType.SCHOOL_ADMIN,
-          RoleType.TEACHER,
-          RoleType.STAFF,
-          RoleType.PARENT,
-          RoleType.STUDENT,
-        ];
-      case RoleType.TEACHER:
-        return [RoleType.PARENT, RoleType.STUDENT];
-      case RoleType.PARENT:
-        return [RoleType.TEACHER];
-      default:
-        return [];
-    }
+  private getAllowedRecipientRoles(_senderRole: RoleType): RoleType[] {
+    return Object.values(RoleType);
   }
 
   private resolveUserSchoolScope(currentUser: JwtUser) {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { AttendanceMonthCalendar } from '@/components/ui/attendance-month-calendar';
 import { Banner } from '@/components/ui/banner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Field, Select } from '@/components/ui/field';
@@ -102,22 +103,13 @@ export default function StudentAttendancePage() {
         </div>
 
         {payload.attendanceSummary.bySession.length ? (
-          <div className="timeline-list">
-            {payload.attendanceSummary.bySession.map((entry) => (
-              <article className="subtle-card" key={entry.session.id}>
-                <div className="portal-detail-row">
-                  <strong>{entry.session.name}</strong>
-                  <span className="muted-text">
-                    {entry.present}/{entry.totalDays} present
-                  </span>
-                </div>
-                <p className="muted-text">
-                  Absent {entry.absent} • Late {entry.late} • Leave {entry.leave} •{' '}
-                  {entry.percentage}%
-                </p>
-              </article>
-            ))}
-          </div>
+          <AttendanceMonthCalendar
+            description="Calendar view of present, absent, and late dates."
+            emptyDescription="Attendance records will appear here once teachers mark classes."
+            emptyTitle="No attendance records"
+            records={payload.attendanceSummary.records}
+            title="Date-wise Attendance"
+          />
         ) : (
           <EmptyState
             title="No attendance records"

@@ -11,6 +11,7 @@ interface ExamTableProps {
   exams: ExamRecord[];
   meta: ApiMeta;
   loading: boolean;
+  canManage: boolean;
   deletingExamId: string | null;
   selectedExamId: string | null;
   onEdit: (exam: ExamRecord) => void;
@@ -23,6 +24,7 @@ export function ExamTable({
   exams,
   meta,
   loading,
+  canManage,
   deletingExamId,
   selectedExamId,
   onEdit,
@@ -45,7 +47,11 @@ export function ExamTable({
 
       {!loading && exams.length === 0 ? (
         <EmptyState
-          description="Create an exam or adjust your filters to view existing schedules."
+          description={
+            canManage
+              ? 'Create an exam or adjust your filters to view existing schedules.'
+              : 'Adjust your filters to view existing exam schedules.'
+          }
           title="No exams found."
         />
       ) : null}
@@ -102,21 +108,25 @@ export function ExamTable({
                         >
                           {selectedExamId === exam.id ? 'Selected' : 'Open'}
                         </Button>
-                        <Button
-                          onClick={() => onEdit(exam)}
-                          type="button"
-                          variant="secondary"
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          disabled={deletingExamId === exam.id}
-                          onClick={() => onDelete(exam)}
-                          type="button"
-                          variant="danger"
-                        >
-                          {deletingExamId === exam.id ? 'Deleting...' : 'Delete'}
-                        </Button>
+                        {canManage ? (
+                          <>
+                            <Button
+                              onClick={() => onEdit(exam)}
+                              type="button"
+                              variant="secondary"
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              disabled={deletingExamId === exam.id}
+                              onClick={() => onDelete(exam)}
+                              type="button"
+                              variant="danger"
+                            >
+                              {deletingExamId === exam.id ? 'Deleting...' : 'Delete'}
+                            </Button>
+                          </>
+                        ) : null}
                       </div>
                     </TableCell>
                   </tr>

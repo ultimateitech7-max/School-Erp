@@ -3,6 +3,7 @@
 import { startTransition, useDeferredValue, useEffect, useState } from 'react';
 import { SectionForm } from './components/SectionForm';
 import { SectionTable } from './components/SectionTable';
+import { CsvDownloadButton } from '@/components/ui/csv-download-button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   apiFetch,
@@ -15,6 +16,8 @@ import {
   type UserStatus,
 } from '@/utils/api';
 import { getStoredAuthSession, type AuthSession } from '@/utils/auth-storage';
+import { sectionCsvColumns } from '@/utils/csv-exporters';
+import { buildCsvFilename, exportPaginatedApiCsv } from '@/utils/csv';
 
 const initialMeta: ApiMeta = {
   page: 1,
@@ -201,6 +204,31 @@ export default function SectionsPage() {
     }
   };
 
+  const handleExportCsv = async () => {
+    try {
+      const count = await exportPaginatedApiCsv<SectionRecord>({
+        path: '/sections',
+        params: {
+          search: deferredSearch || undefined,
+          classId: classFilter || undefined,
+          isActive: statusFilter ? statusFilter === 'ACTIVE' : undefined,
+        },
+        columns: sectionCsvColumns,
+        filename: buildCsvFilename('sections'),
+      });
+
+      setMessage({
+        type: 'success',
+        text: `Downloaded ${count} section record${count === 1 ? '' : 's'} as CSV.`,
+      });
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Failed to export sections.',
+      });
+    }
+  };
+
   if (!sessionLoaded) {
     return (
       <section className="card panel">
@@ -282,6 +310,11 @@ export default function SectionsPage() {
               Reset
             </button>
           ) : null}
+          <CsvDownloadButton
+            label="Download CSV"
+            loadingLabel="Exporting..."
+            onDownload={handleExportCsv}
+          />
         </div>
       </section>
 

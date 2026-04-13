@@ -2,6 +2,7 @@
 
 import { startTransition, useDeferredValue, useEffect, useState } from 'react';
 import { Banner } from '@/components/ui/banner';
+import { CsvDownloadButton } from '@/components/ui/csv-download-button';
 import { Input } from '@/components/ui/field';
 import {
   apiFetch,
@@ -13,6 +14,8 @@ import {
   type ParentRelationType,
   type StudentRecord,
 } from '@/utils/api';
+import { parentCsvColumns } from '@/utils/csv-exporters';
+import { buildCsvFilename, exportPaginatedApiCsv } from '@/utils/csv';
 import { ParentDetail } from './components/ParentDetail';
 import { ParentForm } from './components/ParentForm';
 import { ParentTable } from './components/ParentTable';
@@ -203,6 +206,29 @@ export default function ParentsPage() {
     }
   };
 
+  const handleExportCsv = async () => {
+    try {
+      const count = await exportPaginatedApiCsv<ParentRecord>({
+        path: '/parents',
+        params: {
+          search: deferredSearch || undefined,
+        },
+        columns: parentCsvColumns,
+        filename: buildCsvFilename('parents'),
+      });
+
+      setMessage({
+        type: 'success',
+        text: `Downloaded ${count} parent record${count === 1 ? '' : 's'} as CSV.`,
+      });
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Failed to export parents.',
+      });
+    }
+  };
+
   return (
     <div className="parents-page">
       <section className="card panel parents-toolbar">
@@ -221,6 +247,11 @@ export default function ParentsPage() {
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
           />
+          <CsvDownloadButton
+            label="Download CSV"
+            loadingLabel="Exporting..."
+            onDownload={handleExportCsv}
+          />
         </div>
       </section>
 
@@ -237,6 +268,7 @@ export default function ParentsPage() {
               initialValue={editingParent}
               onCancel={() => setEditingParent(null)}
               onSubmit={handleSubmit}
+              students={students}
               submitting={submitting}
             />
           </section>

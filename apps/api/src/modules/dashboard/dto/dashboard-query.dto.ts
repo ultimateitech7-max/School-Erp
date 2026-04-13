@@ -1,10 +1,14 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { IsDateString, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 
 export class DashboardQueryDto {
   @IsOptional()
   @IsUUID()
   schoolId?: string;
+
+  @IsOptional()
+  @IsDateString()
+  date?: string;
 
   @IsOptional()
   @Type(() => Number)

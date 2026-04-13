@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
@@ -19,6 +20,7 @@ interface PromotionPreviewTableProps {
   loading: boolean;
   emptyTitle?: string;
   emptyDescription?: string;
+  actions?: ReactNode;
 }
 
 function statusTone(status: PromotionPreviewRecord['status']) {
@@ -53,6 +55,7 @@ export function PromotionPreviewTable({
   loading,
   emptyTitle = 'No preview available.',
   emptyDescription = 'Configure the promotion inputs and generate a preview to review valid and skipped students.',
+  actions,
 }: PromotionPreviewTableProps) {
   return (
     <section className="card panel">
@@ -64,6 +67,7 @@ export function PromotionPreviewTable({
             enrollment record.
           </p>
         </div>
+        {actions}
       </div>
 
       {summary ? (

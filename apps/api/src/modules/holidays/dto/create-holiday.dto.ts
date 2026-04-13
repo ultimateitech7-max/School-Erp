@@ -1,5 +1,16 @@
-import { HolidayType } from '@prisma/client';
-import { IsDateString, IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import { HolidayAudience, HolidayType } from '@prisma/client';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsDateString,
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateHolidayDto {
   @IsString()
@@ -14,6 +25,21 @@ export class CreateHolidayDto {
 
   @IsEnum(HolidayType)
   type!: HolidayType;
+
+  @IsOptional()
+  @IsEnum(HolidayAudience)
+  audience?: HolidayAudience;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  allClasses?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsUUID(undefined, { each: true })
+  classIds?: string[];
 
   @IsOptional()
   @IsUUID()

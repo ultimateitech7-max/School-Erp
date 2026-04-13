@@ -23,6 +23,7 @@ interface StudentFormState {
   admissionNo: string;
   email: string;
   phone: string;
+  portalPassword: string;
   gender: 'MALE' | 'FEMALE' | 'OTHER';
   dateOfBirth: string;
   classId: string;
@@ -34,6 +35,7 @@ const initialFormState: StudentFormState = {
   admissionNo: '',
   email: '',
   phone: '',
+  portalPassword: '',
   gender: 'OTHER',
   dateOfBirth: '',
   classId: '',
@@ -65,10 +67,12 @@ export function StudentForm({
   onCancel,
 }: StudentFormProps) {
   const [form, setForm] = useState<StudentFormState>(initialFormState);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!initialStudent) {
       setForm(initialFormState);
+      setError(null);
       return;
     }
 
@@ -77,6 +81,7 @@ export function StudentForm({
       admissionNo: initialStudent.admissionNo ?? '',
       email: initialStudent.email ?? '',
       phone: initialStudent.phone ?? '',
+      portalPassword: '',
       gender:
         initialStudent.gender === 'MALE' ||
         initialStudent.gender === 'FEMALE' ||
@@ -87,6 +92,7 @@ export function StudentForm({
       classId: initialStudent.class?.id ?? '',
       sectionId: initialStudent.section?.id ?? '',
     });
+    setError(null);
   }, [initialStudent]);
 
   const selectedClass =
@@ -95,12 +101,24 @@ export function StudentForm({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setError(null);
+
+    if (form.portalPassword && !form.email.trim()) {
+      setError('Email is required to enable student portal access.');
+      return;
+    }
+
+    if (form.portalPassword && form.portalPassword.trim().length < 8) {
+      setError('Portal password must be at least 8 characters.');
+      return;
+    }
 
     await onSubmit({
       name: form.name.trim(),
       admissionNo: form.classId ? form.admissionNo.trim() || undefined : undefined,
       email: form.email.trim() || undefined,
       phone: form.phone.trim() || undefined,
+      portalPassword: form.portalPassword.trim() || undefined,
       gender: form.gender,
       dateOfBirth: form.dateOfBirth || undefined,
       classId: form.classId || undefined,
@@ -133,6 +151,8 @@ export function StudentForm({
       </div>
 
       <form className="simple-form" onSubmit={handleSubmit}>
+        {error ? <p className="error-text">{error}</p> : null}
+
         <label>
           <span>Registration Number</span>
           <input
@@ -186,6 +206,25 @@ export function StudentForm({
               setForm((current) => ({
                 ...current,
                 phone: event.target.value,
+              }))
+            }
+          />
+        </label>
+
+        <label>
+          <span>Portal Password</span>
+          <input
+            placeholder={
+              initialStudent?.portalAccess
+                ? 'Leave blank to keep current password'
+                : 'Optional student portal password'
+            }
+            type="password"
+            value={form.portalPassword}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                portalPassword: event.target.value,
               }))
             }
           />
@@ -280,6 +319,14 @@ export function StudentForm({
             }
           />
         </label>
+
+        <div className="form-grid-span-full">
+          <p className="muted-text">
+            {initialStudent?.portalAccess
+              ? `Portal access is active for ${initialStudent.portalAccess.email}. Update the email above to change the login email.`
+              : 'Add a portal password to let the student sign in with the email above.'}
+          </p>
+        </div>
 
         <button className="primary-button" disabled={submitting} type="submit">
           {submitting

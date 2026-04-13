@@ -6,8 +6,12 @@ import { ClassDistributionChart } from './components/ClassDistributionChart';
 import { FeeChart } from './components/FeeChart';
 import { RecentActivity } from './components/RecentActivity';
 import { SummaryCards } from './components/SummaryCards';
+import { RoleDashboardHome } from '@/components/dashboard/role-dashboard-home';
+import { Badge } from '@/components/ui/badge';
+import { Field, Input } from '@/components/ui/field';
 import {
   apiFetch,
+  createQueryString,
   type ApiSuccessResponse,
   type DashboardAttendanceRecord,
   type DashboardClassesRecord,
@@ -15,9 +19,11 @@ import {
   type DashboardFeesRecord,
   type DashboardOverviewRecord,
 } from '@/utils/api';
+import { getStoredAuthSession, type AuthSession } from '@/utils/auth-storage';
 
 const emptyOverview: DashboardOverviewRecord = {
   schoolId: null,
+  selectedDate: null,
   totals: {
     students: 0,
     teachers: 0,
@@ -38,6 +44,7 @@ const emptyOverview: DashboardOverviewRecord = {
     pending: 0,
     assigned: 0,
     paymentCount: 0,
+    byMethod: [],
   },
   recentActivities: [],
 };
@@ -56,11 +63,13 @@ const emptyAttendance: DashboardAttendanceRecord = {
 
 const emptyFees: DashboardFeesRecord = {
   schoolId: null,
+  selectedDate: null,
   totals: {
     collected: 0,
     pending: 0,
     assigned: 0,
     paymentCount: 0,
+    byMethod: [],
   },
   chart: [],
 };
@@ -94,6 +103,8 @@ function formatCurrency(value: number) {
 }
 
 export default function DashboardAnalyticsPage() {
+  const [session] = useState<AuthSession | null>(() => getStoredAuthSession());
+  const [selectedDate, setSelectedDate] = useState('');
   const [overview, setOverview] = useState<DashboardOverviewRecord>(emptyOverview);
   const [attendance, setAttendance] = useState<DashboardAttendanceRecord>(emptyAttendance);
   const [fees, setFees] = useState<DashboardFeesRecord>(emptyFees);
@@ -103,13 +114,24 @@ export default function DashboardAnalyticsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (session?.user.role === 'TEACHER' || session?.user.role === 'STAFF') {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
+    const feeQuery = createQueryString({
+      date: selectedDate || undefined,
+    });
+
     void Promise.all([
-      apiFetch<ApiSuccessResponse<DashboardOverviewRecord>>('/dashboard/overview'),
+      apiFetch<ApiSuccessResponse<DashboardOverviewRecord>>(
+        `/dashboard/overview${feeQuery}`,
+      ),
       apiFetch<ApiSuccessResponse<DashboardAttendanceRecord>>('/dashboard/attendance'),
-      apiFetch<ApiSuccessResponse<DashboardFeesRecord>>('/dashboard/fees'),
+      apiFetch<ApiSuccessResponse<DashboardFeesRecord>>(`/dashboard/fees${feeQuery}`),
       apiFetch<ApiSuccessResponse<DashboardClassesRecord>>('/dashboard/classes'),
       apiFetch<ApiSuccessResponse<DashboardExamsRecord>>('/dashboard/exams'),
     ])
@@ -138,7 +160,15 @@ export default function DashboardAnalyticsPage() {
       .finally(() => {
         setLoading(false);
       });
-  }, []);
+  }, [selectedDate, session?.user.role]);
+
+  const feeDateLabel = selectedDate
+    ? new Intl.DateTimeFormat('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      }).format(new Date(`${selectedDate}T00:00:00`))
+    : 'overall';
 
   const summaryItems = useMemo(
     () => [
@@ -160,12 +190,16 @@ export default function DashboardAnalyticsPage() {
       {
         label: 'Fees Collected',
         value: formatCurrency(overview.fees.collected),
-        hint: `${overview.fees.paymentCount} payments recorded`,
+        hint: selectedDate
+          ? `${overview.fees.paymentCount} payments on ${feeDateLabel}`
+          : `${overview.fees.paymentCount} payments recorded`,
       },
       {
         label: 'Pending Fees',
         value: formatCurrency(overview.fees.pending),
-        hint: `${formatCurrency(overview.fees.assigned)} assigned`,
+        hint: selectedDate
+          ? `${formatCurrency(overview.fees.assigned)} still assigned school-wide`
+          : `${formatCurrency(overview.fees.assigned)} assigned`,
       },
       {
         label: 'Exams',
@@ -173,8 +207,16 @@ export default function DashboardAnalyticsPage() {
         hint: `${exams.summary.published} published`,
       },
     ],
-    [exams.summary.published, overview],
+    [exams.summary.published, feeDateLabel, overview, selectedDate],
   );
+
+  if (session?.user.role === 'TEACHER') {
+    return <RoleDashboardHome role="TEACHER" />;
+  }
+
+  if (session?.user.role === 'STAFF') {
+    return <RoleDashboardHome role="STAFF" />;
+  }
 
   return (
     <section className="analytics-page">
@@ -183,6 +225,27 @@ export default function DashboardAnalyticsPage() {
           <p className="error-text">{error}</p>
         </article>
       ) : null}
+
+      <article className="card panel analytics-filter-panel">
+        <div className="panel-heading compact-panel-heading">
+          <div>
+            <h2>Tracking Filters</h2>
+            <p className="muted-text">
+              Switch between overall view and a single-day fee collection snapshot.
+            </p>
+          </div>
+          <div className="analytics-filter-actions">
+            {selectedDate ? <Badge tone="info">{feeDateLabel}</Badge> : null}
+            <Field className="analytics-date-field" label="Fee Collection Date">
+              <Input
+                type="date"
+                value={selectedDate}
+                onChange={(event) => setSelectedDate(event.target.value)}
+              />
+            </Field>
+          </div>
+        </div>
+      </article>
 
       <SummaryCards
         items={
@@ -212,7 +275,24 @@ export default function DashboardAnalyticsPage() {
             <div>
               <span className="eyebrow">Fees</span>
               <h2>Fee Collection</h2>
-              <p className="muted-text">Recent collection trend and outstanding dues.</p>
+              <p className="muted-text">
+                {selectedDate
+                  ? `Collection snapshot for ${feeDateLabel} with payment-method split.`
+                  : 'Recent collection trend and outstanding dues.'}
+              </p>
+            </div>
+            <div className="analytics-method-breakdown">
+              {fees.totals.byMethod.length ? (
+                fees.totals.byMethod.map((item) => (
+                  <div className="analytics-method-pill" key={item.method}>
+                    <strong>{item.method}</strong>
+                    <span>{formatCurrency(item.total)}</span>
+                    <small>{item.count} payment{item.count === 1 ? '' : 's'}</small>
+                  </div>
+                ))
+              ) : (
+                <Badge tone="neutral">No payment-method data</Badge>
+              )}
             </div>
           </div>
           <FeeChart points={fees.chart} />

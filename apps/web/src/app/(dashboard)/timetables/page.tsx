@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Banner } from '@/components/ui/banner';
+import { CsvDownloadButton } from '@/components/ui/csv-download-button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Field, Select } from '@/components/ui/field';
+import { getStoredAuthSession, type AuthSession } from '@/utils/auth-storage';
 import {
   apiFetch,
   createQueryString,
@@ -13,10 +15,13 @@ import {
   type TimetableOptionsPayload,
   type UpdateTimetableFormPayload,
 } from '@/utils/api';
+import { timetableCsvColumns } from '@/utils/csv-exporters';
+import { buildCsvFilename, exportRowsToCsv } from '@/utils/csv';
 import { TimetableForm } from './components/TimetableForm';
 import { TimetableGrid } from './components/TimetableGrid';
 
 export default function TimetablesPage() {
+  const [session] = useState<AuthSession | null>(() => getStoredAuthSession());
   const [options, setOptions] = useState<TimetableOptionsPayload | null>(null);
   const [entries, setEntries] = useState<TimetableEntryRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,6 +91,16 @@ export default function TimetablesPage() {
     const matchedClass = options?.classes.find((item) => item.id === classId);
     return matchedClass?.sections ?? [];
   }, [classId, options?.classes]);
+  const selectedClass = useMemo(
+    () => options?.classes.find((item) => item.id === classId) ?? null,
+    [classId, options?.classes],
+  );
+  const selectedSection = useMemo(
+    () => sections.find((item) => item.id === sectionId) ?? null,
+    [sectionId, sections],
+  );
+  const canManageTimetable =
+    session?.user.role === 'SUPER_ADMIN' || session?.user.role === 'SCHOOL_ADMIN';
 
   const handleCreate = async (payload: TimetableFormPayload) => {
     setSubmitting(true);
@@ -191,6 +206,14 @@ export default function TimetablesPage() {
     }
   };
 
+  const handleExportCsv = async () => {
+    const count = exportRowsToCsv(entries, timetableCsvColumns, buildCsvFilename('timetable'));
+    setMessage({
+      type: 'success',
+      text: `Downloaded ${count} timetable entr${count === 1 ? 'y' : 'ies'} as CSV.`,
+    });
+  };
+
   return (
     <div className="dashboard-stack">
       <section className="card panel academic-toolbar">
@@ -208,9 +231,10 @@ export default function TimetablesPage() {
               onChange={(event) => {
                 setClassId(event.target.value);
                 setSectionId('');
+                setSelectedEntry(null);
               }}
             >
-              <option value="">All classes</option>
+              {!canManageTimetable ? <option value="">All classes</option> : null}
               {options?.classes.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
@@ -222,9 +246,14 @@ export default function TimetablesPage() {
           <Field label="Section">
             <Select
               value={sectionId}
-              onChange={(event) => setSectionId(event.target.value)}
+              onChange={(event) => {
+                setSectionId(event.target.value);
+                setSelectedEntry(null);
+              }}
             >
-              <option value="">All sections</option>
+              <option value="">
+                {canManageTimetable ? 'Class-wide / All sections' : 'All sections'}
+              </option>
               {sections.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
@@ -232,6 +261,11 @@ export default function TimetablesPage() {
               ))}
             </Select>
           </Field>
+          <CsvDownloadButton
+            label="Download CSV"
+            loadingLabel="Exporting..."
+            onDownload={handleExportCsv}
+          />
         </div>
       </section>
 
@@ -241,38 +275,47 @@ export default function TimetablesPage() {
         </Banner>
       ) : null}
 
-      <div className="academic-grid">
-        <TimetableForm
-          initialEntry={selectedEntry}
-          options={options}
-          onCancel={() => setSelectedEntry(null)}
-          onSubmit={selectedEntry ? handleUpdate : handleCreate}
-          submitLabel={selectedEntry ? 'Save Entry' : 'Add Entry'}
-          submitting={submitting}
-        />
+      <div className="dashboard-stack">
+        {canManageTimetable ? (
+          <TimetableForm
+            initialEntry={selectedEntry}
+            onCancel={() => setSelectedEntry(null)}
+            onSubmit={selectedEntry ? handleUpdate : handleCreate}
+            options={options}
+            selectedClassId={classId}
+            selectedClassName={selectedClass?.name ?? ''}
+            selectedSectionId={sectionId}
+            selectedSectionName={selectedSection?.name ?? ''}
+            submitLabel={selectedEntry ? 'Save Entry' : 'Add Entry'}
+            submitting={submitting}
+          />
+        ) : null}
         <TimetableGrid
           deletingEntryId={deletingEntryId}
           entries={entries}
           loading={loading}
-          onDelete={(entry) => setEntryPendingDelete(entry)}
-          onSelect={(entry) => setSelectedEntry(entry)}
+          onDelete={canManageTimetable ? (entry) => setEntryPendingDelete(entry) : undefined}
+          onSelect={canManageTimetable ? (entry) => setSelectedEntry(entry) : undefined}
           selectedEntryId={selectedEntry?.id ?? null}
+          showActions={canManageTimetable}
         />
       </div>
 
-      <ConfirmDialog
-        confirmLabel="Delete Entry"
-        description="This timetable slot will be removed from the weekly grid."
-        loading={Boolean(deletingEntryId)}
-        onClose={() => {
-          if (!deletingEntryId) {
-            setEntryPendingDelete(null);
-          }
-        }}
-        onConfirm={() => void handleDelete()}
-        open={Boolean(entryPendingDelete)}
-        title="Delete timetable entry?"
-      />
+      {canManageTimetable ? (
+        <ConfirmDialog
+          confirmLabel="Delete Entry"
+          description="This timetable slot will be removed from the weekly grid."
+          loading={Boolean(deletingEntryId)}
+          onClose={() => {
+            if (!deletingEntryId) {
+              setEntryPendingDelete(null);
+            }
+          }}
+          onConfirm={() => void handleDelete()}
+          open={Boolean(entryPendingDelete)}
+          title="Delete timetable entry?"
+        />
+      ) : null}
     </div>
   );
 }

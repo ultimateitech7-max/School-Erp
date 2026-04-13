@@ -21,6 +21,7 @@ import { AssignFeeDto } from './dto/assign-fee.dto';
 import { CreateFeeStructureDto } from './dto/create-fee-structure.dto';
 import { FeeQueryDto } from './dto/fee-query.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
+import { UpdateFeeStructureDto } from './dto/update-fee-structure.dto';
 
 const FEE_LIST_TTL_SECONDS = 60 * 5;
 const DEFAULT_PAGE = 1;
@@ -115,7 +116,23 @@ export class FeesService {
       this.prisma.academicClass.findMany({
         where: { schoolId, isActive: true },
         orderBy: [{ sortOrder: 'asc' }, { className: 'asc' }],
-        select: { id: true, className: true, classCode: true },
+        select: {
+          id: true,
+          className: true,
+          classCode: true,
+          sections: {
+            where: {
+              isActive: true,
+            },
+            orderBy: {
+              sectionName: 'asc',
+            },
+            select: {
+              id: true,
+              sectionName: true,
+            },
+          },
+        },
       }),
       this.prisma.student.findMany({
         where: {
@@ -129,6 +146,21 @@ export class FeesService {
           id: true,
           fullName: true,
           studentCode: true,
+          registrationNumber: true,
+          admissions: {
+            where: {
+              admissionStatus: {
+                in: ['ACTIVE', 'PROMOTED'],
+              },
+            },
+            orderBy: [{ admissionDate: 'desc' }, { createdAt: 'desc' }],
+            take: 1,
+            select: {
+              admissionNo: true,
+              classId: true,
+              sectionId: true,
+            },
+          },
         },
       }),
     ]);
@@ -142,11 +174,19 @@ export class FeesService {
           id: academicClass.id,
           name: academicClass.className,
           classCode: academicClass.classCode,
+          sections: academicClass.sections.map((section) => ({
+            id: section.id,
+            name: section.sectionName,
+          })),
         })),
         students: students.map((student) => ({
           id: student.id,
           name: student.fullName,
           studentCode: student.studentCode,
+          registrationNumber: student.registrationNumber,
+          admissionNo: student.admissions[0]?.admissionNo ?? null,
+          classId: student.admissions[0]?.classId ?? null,
+          sectionId: student.admissions[0]?.sectionId ?? null,
         })),
         feeCategories: Object.values(FeeCategory),
         feeFrequencies: Object.values(FeeFrequency),
@@ -204,6 +244,147 @@ export class FeesService {
     return {
       success: true,
       data: this.serializeFeeStructure(feeStructure),
+    };
+  }
+
+  async updateFeeStructure(
+    currentUser: JwtUser,
+    id: string,
+    dto: UpdateFeeStructureDto,
+  ) {
+    const schoolId = this.resolveWriteSchoolScope(currentUser, dto.schoolId);
+    const existingFeeStructure = await this.prisma.feeStructure.findFirst({
+      where: {
+        id,
+        schoolId,
+        isActive: true,
+      },
+      include: feeStructureInclude,
+    });
+
+    if (!existingFeeStructure) {
+      throw new NotFoundException('Fee structure not found for this school.');
+    }
+
+    const nextSessionId = dto.sessionId ?? existingFeeStructure.sessionId;
+    const feeCode = dto.feeCode?.trim().toUpperCase() ?? existingFeeStructure.feeCode;
+
+    if (dto.classId) {
+      await this.ensureClassInSchool(schoolId, dto.classId);
+    }
+
+    if (dto.sessionId) {
+      await this.resolveAcademicSession(schoolId, dto.sessionId);
+    }
+
+    if (
+      feeCode !== existingFeeStructure.feeCode ||
+      nextSessionId !== existingFeeStructure.sessionId
+    ) {
+      await this.ensureUniqueFeeStructure(schoolId, nextSessionId, feeCode, id);
+    }
+
+    const updatedFeeStructure = await this.prisma.feeStructure.update({
+      where: {
+        id: existingFeeStructure.id,
+      },
+      data: {
+        sessionId: nextSessionId,
+        classId: dto.classId !== undefined ? dto.classId || null : undefined,
+        feeCode,
+        feeName: dto.name?.trim() ?? undefined,
+        feeCategory: dto.category ?? undefined,
+        frequency: dto.frequency ?? undefined,
+        amount:
+          dto.amount !== undefined ? new Prisma.Decimal(dto.amount) : undefined,
+        dueDate:
+          dto.dueDate !== undefined
+            ? dto.dueDate
+              ? new Date(dto.dueDate)
+              : null
+            : undefined,
+        lateFeePerDay:
+          dto.lateFeePerDay !== undefined
+            ? new Prisma.Decimal(dto.lateFeePerDay)
+            : undefined,
+        isOptional: dto.isOptional ?? undefined,
+      },
+      include: feeStructureInclude,
+    });
+
+    await this.invalidateFeeCaches(schoolId);
+    await this.auditService.write({
+      action: 'fees.structure.update',
+      entity: 'fee_structure',
+      entityId: updatedFeeStructure.id,
+      actorUserId: currentUser.id,
+      schoolId,
+      metadata: {
+        feeName: updatedFeeStructure.feeName,
+        feeCode: updatedFeeStructure.feeCode,
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Fee structure updated successfully.',
+      data: this.serializeFeeStructure(updatedFeeStructure),
+    };
+  }
+
+  async removeFeeStructure(
+    currentUser: JwtUser,
+    id: string,
+    schoolIdOverride?: string | null,
+  ) {
+    const schoolId = this.resolveWriteSchoolScope(currentUser, schoolIdOverride);
+    const existingFeeStructure = await this.prisma.feeStructure.findFirst({
+      where: {
+        id,
+        schoolId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        schoolId: true,
+        feeName: true,
+        feeCode: true,
+      },
+    });
+
+    if (!existingFeeStructure) {
+      throw new NotFoundException('Fee structure not found for this school.');
+    }
+
+    await this.prisma.feeStructure.update({
+      where: {
+        id: existingFeeStructure.id,
+      },
+      data: {
+        isActive: false,
+      },
+    });
+
+    await this.invalidateFeeCaches(schoolId);
+    await this.auditService.write({
+      action: 'fees.structure.delete',
+      entity: 'fee_structure',
+      entityId: existingFeeStructure.id,
+      actorUserId: currentUser.id,
+      schoolId,
+      metadata: {
+        feeName: existingFeeStructure.feeName,
+        feeCode: existingFeeStructure.feeCode,
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Fee structure deleted successfully.',
+      data: {
+        id: existingFeeStructure.id,
+        deleted: true,
+      },
     };
   }
 
@@ -278,17 +459,14 @@ export class FeesService {
 
   async assignFee(currentUser: JwtUser, dto: AssignFeeDto) {
     const schoolId = this.resolveWriteSchoolScope(currentUser, dto.schoolId);
-    const [student, feeStructure] = await Promise.all([
-      this.ensureStudentInSchool(schoolId, dto.studentId),
-      this.prisma.feeStructure.findFirst({
-        where: {
-          id: dto.feeStructureId,
-          schoolId,
-          isActive: true,
-        },
-        include: feeStructureInclude,
-      }),
-    ]);
+    const feeStructure = await this.prisma.feeStructure.findFirst({
+      where: {
+        id: dto.feeStructureId,
+        schoolId,
+        isActive: true,
+      },
+      include: feeStructureInclude,
+    });
 
     if (!feeStructure) {
       throw new NotFoundException('Fee structure not found for this school.');
@@ -297,6 +475,11 @@ export class FeesService {
     const session = await this.resolveAcademicSession(
       schoolId,
       dto.sessionId ?? feeStructure.sessionId,
+    );
+    const targetStudents = await this.resolveFeeAssignmentTargets(
+      schoolId,
+      dto,
+      session.id,
     );
 
     const assignedAmount = new Prisma.Decimal(
@@ -311,58 +494,76 @@ export class FeesService {
       );
     }
 
-    const feeAssignment = await this.prisma.feeAssignment.upsert({
-      where: {
-        schoolId_studentId_feeStructureId: {
-          schoolId,
-          studentId: student.id,
-          feeStructureId: feeStructure.id,
-        },
+    const dueDate = dto.dueDate ? new Date(dto.dueDate) : feeStructure.dueDate ?? null;
+    const feeAssignments = await this.prisma.$transaction(
+      async (tx) => {
+        const records = [];
+
+        for (const student of targetStudents) {
+          const record = await tx.feeAssignment.upsert({
+            where: {
+              schoolId_studentId_feeStructureId: {
+                schoolId,
+                studentId: student.id,
+                feeStructureId: feeStructure.id,
+              },
+            },
+            update: {
+              sessionId: session.id,
+              assignedAmount,
+              concessionAmount,
+              netAmount,
+              dueDate,
+              status: FeeAssignmentStatus.PENDING,
+            },
+            create: {
+              schoolId,
+              sessionId: session.id,
+              studentId: student.id,
+              feeStructureId: feeStructure.id,
+              assignedAmount,
+              concessionAmount,
+              netAmount,
+              paidAmount: new Prisma.Decimal(0),
+              dueDate,
+              status: FeeAssignmentStatus.PENDING,
+            },
+            include: feeAssignmentInclude,
+          });
+
+          records.push(record);
+        }
+
+        return records;
       },
-      update: {
-        sessionId: session.id,
-        assignedAmount,
-        concessionAmount,
-        netAmount,
-        dueDate: dto.dueDate
-          ? new Date(dto.dueDate)
-          : feeStructure.dueDate ?? null,
-        status: FeeAssignmentStatus.PENDING,
+      {
+        maxWait: 10_000,
+        timeout: 30_000,
       },
-      create: {
-        schoolId,
-        sessionId: session.id,
-        studentId: student.id,
-        feeStructureId: feeStructure.id,
-        assignedAmount,
-        concessionAmount,
-        netAmount,
-        paidAmount: new Prisma.Decimal(0),
-        dueDate: dto.dueDate
-          ? new Date(dto.dueDate)
-          : feeStructure.dueDate ?? null,
-        status: FeeAssignmentStatus.PENDING,
-      },
-      include: feeAssignmentInclude,
-    });
+    );
 
     await this.invalidateFeeCaches(schoolId);
     await this.auditService.write({
       action: 'fees.assign',
       entity: 'fee_assignment',
-      entityId: feeAssignment.id,
+      entityId: feeAssignments[0]?.id ?? feeStructure.id,
       actorUserId: currentUser.id,
       schoolId,
       metadata: {
-        studentId: student.id,
+        studentIds: targetStudents.map((student) => student.id),
         feeStructureId: feeStructure.id,
+        totalAssignedStudents: targetStudents.length,
         netAmount: netAmount.toString(),
       },
     });
 
     return {
       success: true,
-      data: this.serializeFeeAssignment(feeAssignment),
+      message:
+        targetStudents.length === 1
+          ? 'Fee assigned successfully.'
+          : `Fee assigned successfully to ${targetStudents.length} students.`,
+      data: this.serializeFeeAssignment(feeAssignments[0]),
     };
   }
 
@@ -376,75 +577,55 @@ export class FeesService {
     const page = Math.max(query.page ?? DEFAULT_PAGE, DEFAULT_PAGE);
     const limit = Math.min(Math.max(query.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
     const search = query.search?.trim() ?? '';
-    const cacheKey = this.buildCacheKey('student-fees', student.schoolId, {
+    const where: Prisma.FeeAssignmentWhereInput = {
+      schoolId: student.schoolId,
       studentId: student.id,
-      page,
-      limit,
-      search,
-      status: query.status,
-    });
-
-    const payload = await this.redisService.remember(
-      cacheKey,
-      FEE_LIST_TTL_SECONDS,
-      async () => {
-        const where: Prisma.FeeAssignmentWhereInput = {
-          schoolId: student.schoolId,
-          studentId: student.id,
-          ...(query.status ? { status: query.status } : {}),
-          ...(query.feeStructureId ? { feeStructureId: query.feeStructureId } : {}),
-          ...(search
-            ? {
-                OR: [
-                  {
-                    feeStructure: {
-                      feeName: {
-                        contains: search,
-                        mode: 'insensitive',
-                      },
-                    },
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.feeStructureId ? { feeStructureId: query.feeStructureId } : {}),
+      ...(search
+        ? {
+            OR: [
+              {
+                feeStructure: {
+                  feeName: {
+                    contains: search,
+                    mode: 'insensitive',
                   },
-                  {
-                    feeStructure: {
-                      feeCode: {
-                        contains: search,
-                        mode: 'insensitive',
-                      },
-                    },
+                },
+              },
+              {
+                feeStructure: {
+                  feeCode: {
+                    contains: search,
+                    mode: 'insensitive',
                   },
-                ],
-              }
-            : {}),
-        };
+                },
+              },
+            ],
+          }
+        : {}),
+    };
 
-        const [items, total] = await Promise.all([
-          this.prisma.feeAssignment.findMany({
-            where,
-            include: feeAssignmentInclude,
-            orderBy: [{ createdAt: 'desc' }],
-            skip: (page - 1) * limit,
-            take: limit,
-          }),
-          this.prisma.feeAssignment.count({ where }),
-        ]);
-
-        return {
-          items: items.map((item) => this.serializeFeeAssignment(item)),
-          meta: { page, limit, total },
-          student: {
-            id: student.id,
-            name: student.fullName,
-            studentCode: student.studentCode,
-          },
-        };
-      },
-    );
+    const [items, total] = await Promise.all([
+      this.prisma.feeAssignment.findMany({
+        where,
+        include: feeAssignmentInclude,
+        orderBy: [{ createdAt: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.feeAssignment.count({ where }),
+    ]);
 
     return {
       success: true,
-      data: payload.items,
-      meta: payload.meta,
-      student: payload.student,
+      data: items.map((item) => this.serializeFeeAssignment(item)),
+      meta: { page, limit, total },
+      student: {
+        id: student.id,
+        name: student.fullName,
+        studentCode: student.studentCode,
+      },
     };
   }
 
@@ -554,6 +735,8 @@ export class FeesService {
       limit,
       search,
       studentId: query.studentId,
+      classId: query.classId,
+      sectionId: query.sectionId,
       paymentMethod: query.paymentMethod,
     });
 
@@ -567,6 +750,24 @@ export class FeesService {
             ? {
                 feeAssignment: {
                   studentId: query.studentId,
+                },
+              }
+            : {}),
+          ...(query.classId || query.sectionId
+            ? {
+                feeAssignment: {
+                  ...(query.studentId ? { studentId: query.studentId } : {}),
+                  student: {
+                    admissions: {
+                      some: {
+                        admissionStatus: {
+                          in: ['ACTIVE', 'PROMOTED'],
+                        },
+                        ...(query.classId ? { classId: query.classId } : {}),
+                        ...(query.sectionId ? { sectionId: query.sectionId } : {}),
+                      },
+                    },
+                  },
                 },
               }
             : {}),
@@ -633,6 +834,91 @@ export class FeesService {
       success: true,
       data: payload.items,
       meta: payload.meta,
+    };
+  }
+
+  async getPaymentReceipt(currentUser: JwtUser, paymentId: string) {
+    const schoolId =
+      currentUser.role === RoleType.SUPER_ADMIN
+        ? currentUser.schoolId ?? undefined
+        : this.resolveWriteSchoolScope(currentUser, currentUser.schoolId ?? null);
+    const payment = await this.findPaymentForReceipt(paymentId, { schoolId });
+
+    return {
+      success: true,
+      message: 'Fee receipt fetched successfully.',
+      data: this.serializeReceiptPayload(payment),
+    };
+  }
+
+  async getPaymentReceiptForStudent(currentUser: JwtUser, paymentId: string) {
+    if (currentUser.role !== RoleType.STUDENT || !currentUser.schoolId) {
+      throw new ForbiddenException('Only student users can access this receipt.');
+    }
+
+    const student = await this.prisma.student.findFirst({
+      where: {
+        userId: currentUser.id,
+        schoolId: currentUser.schoolId,
+      },
+      select: {
+        id: true,
+        schoolId: true,
+      },
+    });
+
+    if (!student) {
+      throw new NotFoundException('Student not found.');
+    }
+
+    const payment = await this.findPaymentForReceipt(paymentId, {
+      schoolId: student.schoolId,
+      studentId: student.id,
+    });
+
+    return {
+      success: true,
+      message: 'Student fee receipt fetched successfully.',
+      data: this.serializeReceiptPayload(payment),
+    };
+  }
+
+  async getPaymentReceiptForParent(
+    currentUser: JwtUser,
+    studentId: string,
+    paymentId: string,
+  ) {
+    if (currentUser.role !== RoleType.PARENT || !currentUser.schoolId) {
+      throw new ForbiddenException('Only parent users can access this receipt.');
+    }
+
+    const link = await this.prisma.parentStudent.findFirst({
+      where: {
+        schoolId: currentUser.schoolId,
+        studentId,
+        parent: {
+          userId: currentUser.id,
+        },
+      },
+      select: {
+        schoolId: true,
+        studentId: true,
+      },
+    });
+
+    if (!link) {
+      throw new NotFoundException('Linked student not found for this parent.');
+    }
+
+    const payment = await this.findPaymentForReceipt(paymentId, {
+      schoolId: link.schoolId,
+      studentId: link.studentId,
+    });
+
+    return {
+      success: true,
+      message: 'Parent fee receipt fetched successfully.',
+      data: this.serializeReceiptPayload(payment),
     };
   }
 
@@ -714,10 +1000,71 @@ export class FeesService {
     return currentSession;
   }
 
+  private async resolveFeeAssignmentTargets(
+    schoolId: string,
+    dto: AssignFeeDto,
+    sessionId: string,
+  ) {
+    if (dto.studentId) {
+      return [await this.ensureStudentInSchool(schoolId, dto.studentId)];
+    }
+
+    if (!dto.classId) {
+      throw new BadRequestException(
+        'Select a class, section, or student before assigning a fee.',
+      );
+    }
+
+    await this.ensureClassInSchool(schoolId, dto.classId);
+
+    if (dto.sectionId) {
+      await this.ensureSectionInSchool(schoolId, dto.classId, dto.sectionId);
+    }
+
+    const students = await this.prisma.student.findMany({
+      where: {
+        schoolId,
+        status: {
+          not: 'INACTIVE',
+        },
+        admissions: {
+          some: {
+            admissionStatus: {
+              in: ['ACTIVE', 'PROMOTED'],
+            },
+            sessionId,
+            classId: dto.classId,
+            ...(dto.sectionId ? { sectionId: dto.sectionId } : {}),
+          },
+        },
+      },
+      orderBy: {
+        fullName: 'asc',
+      },
+      select: {
+        id: true,
+        schoolId: true,
+        fullName: true,
+        studentCode: true,
+      },
+    });
+
+    if (!students.length) {
+      throw new BadRequestException(
+        dto.sectionId
+          ? 'No active students found in the selected section.'
+          : 'No active students found in the selected class.',
+      );
+    }
+
+    return students;
+  }
+
   private async ensureUniqueFeeStructure(
     schoolId: string,
     sessionId: string,
     feeCode: string,
+    ignoreId?: string,
   ) {
     const existingFee = await this.prisma.feeStructure.findFirst({
       where: {
@@ -727,6 +1074,13 @@ export class FeesService {
           equals: feeCode,
           mode: 'insensitive',
         },
+        ...(ignoreId
+          ? {
+              id: {
+                not: ignoreId,
+              },
+            }
+          : {}),
       },
       select: { id: true },
     });
@@ -748,6 +1102,28 @@ export class FeesService {
 
     if (!academicClass) {
       throw new NotFoundException('Class not found for this school.');
+    }
+  }
+
+  private async ensureSectionInSchool(
+    schoolId: string,
+    classId: string,
+    sectionId: string,
+  ) {
+    const section = await this.prisma.section.findFirst({
+      where: {
+        id: sectionId,
+        classId,
+        schoolId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!section) {
+      throw new NotFoundException('Section not found for this class.');
     }
   }
 
@@ -773,6 +1149,99 @@ export class FeesService {
     }
 
     return student;
+  }
+
+  private async findPaymentForReceipt(
+    paymentId: string,
+    scope: { schoolId?: string; studentId?: string },
+  ) {
+    const payment = await this.prisma.feePayment.findFirst({
+      where: {
+        id: paymentId,
+        ...(scope.schoolId ? { schoolId: scope.schoolId } : {}),
+        ...(scope.studentId
+          ? {
+              feeAssignment: {
+                studentId: scope.studentId,
+              },
+            }
+          : {}),
+      },
+      include: {
+        feeReceipt: {
+          include: {
+            receivedByUser: {
+              select: {
+                id: true,
+                fullName: true,
+              },
+            },
+          },
+        },
+        feeAssignment: {
+          include: {
+            academicSession: {
+              select: {
+                id: true,
+                sessionName: true,
+                isCurrent: true,
+              },
+            },
+            student: {
+              select: {
+                id: true,
+                fullName: true,
+                studentCode: true,
+                admissions: {
+                  orderBy: [{ admissionDate: 'desc' }, { createdAt: 'desc' }],
+                  take: 1,
+                  include: {
+                    academicClass: {
+                      select: {
+                        id: true,
+                        className: true,
+                        classCode: true,
+                      },
+                    },
+                    section: {
+                      select: {
+                        id: true,
+                        sectionName: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            feeStructure: {
+              select: {
+                id: true,
+                feeName: true,
+                feeCode: true,
+                feeCategory: true,
+              },
+            },
+          },
+        },
+        school: {
+          select: {
+            id: true,
+            schoolCode: true,
+            name: true,
+            email: true,
+            phone: true,
+            addressJson: true,
+            settingsJson: true,
+          },
+        },
+      },
+    });
+
+    if (!payment) {
+      throw new NotFoundException('Fee payment receipt not found.');
+    }
+
+    return payment;
   }
 
   private async findStudentOrThrow(
@@ -917,6 +1386,7 @@ export class FeesService {
     const totalAmount = feeAssignment.assignedAmount.toNumber();
     const paidAmount = feeAssignment.paidAmount.toNumber();
     const dueAmount = feeAssignment.netAmount.minus(feeAssignment.paidAmount).toNumber();
+    const status = this.resolveAssignmentStatus(dueAmount, paidAmount);
 
     return {
       id: feeAssignment.id,
@@ -933,7 +1403,7 @@ export class FeesService {
       netAmount: feeAssignment.netAmount.toNumber(),
       paidAmount,
       dueAmount,
-      status: feeAssignment.status,
+      status,
       dueDate: feeAssignment.dueDate,
       assignedAt: feeAssignment.assignedAt,
       payments: feeAssignment.payments.map((payment) => ({
@@ -947,6 +1417,18 @@ export class FeesService {
       createdAt: feeAssignment.createdAt,
       updatedAt: feeAssignment.updatedAt,
     };
+  }
+
+  private resolveAssignmentStatus(dueAmount: number, paidAmount: number) {
+    if (dueAmount <= 0) {
+      return FeeAssignmentStatus.PAID;
+    }
+
+    if (paidAmount > 0) {
+      return FeeAssignmentStatus.PARTIAL;
+    }
+
+    return FeeAssignmentStatus.PENDING;
   }
 
   private serializePayment(payment: FeePaymentWithDetails) {
@@ -971,6 +1453,167 @@ export class FeesService {
       },
       createdAt: payment.createdAt,
       updatedAt: payment.updatedAt,
+    };
+  }
+
+  private serializeReceiptPayload(
+    payment: Awaited<ReturnType<FeesService['findPaymentForReceipt']>>,
+  ) {
+    const settingsJson = this.getSettingsJson(payment.school.settingsJson);
+    const branding = this.getBrandingSettings(settingsJson);
+    const template = this.getReceiptTemplateSettings(settingsJson);
+    const currentEnrollment = payment.feeAssignment.student.admissions[0] ?? null;
+    const previousPaidAmount = payment.feeAssignment.paidAmount.minus(payment.paidAmount);
+    const dueAfterPayment = payment.feeAssignment.netAmount.minus(
+      payment.feeAssignment.paidAmount,
+    );
+
+    return {
+      paymentId: payment.id,
+      receiptId: payment.feeReceipt.id,
+      receiptNo: payment.feeReceipt.receiptNo,
+      receiptDate: payment.feeReceipt.receiptDate,
+      amount: payment.paidAmount.toNumber(),
+      paymentMethod: payment.feeReceipt.paymentMode,
+      reference: payment.feeReceipt.transactionReference,
+      remarks: payment.remarks,
+      downloadFileName: `${payment.feeReceipt.receiptNo}.pdf`,
+      school: {
+        id: payment.school.id,
+        schoolCode: payment.school.schoolCode,
+        name: payment.school.name,
+        contactEmail: payment.school.email,
+        contactPhone: payment.school.phone,
+        address: this.getAddress(payment.school.addressJson),
+        branding: {
+          logoUrl: branding.logoUrl ?? null,
+          primaryColor: branding.primaryColor ?? null,
+          secondaryColor: branding.secondaryColor ?? null,
+          website: branding.website ?? null,
+          supportEmail: branding.supportEmail ?? null,
+        },
+      },
+      student: {
+        id: payment.feeAssignment.student.id,
+        name: payment.feeAssignment.student.fullName,
+        studentCode: payment.feeAssignment.student.studentCode,
+        className: currentEnrollment?.academicClass?.className ?? null,
+        classCode: currentEnrollment?.academicClass?.classCode ?? null,
+        sectionName: currentEnrollment?.section?.sectionName ?? null,
+      },
+      fee: {
+        id: payment.feeAssignment.feeStructure.id,
+        name: payment.feeAssignment.feeStructure.feeName,
+        feeCode: payment.feeAssignment.feeStructure.feeCode,
+        category: payment.feeAssignment.feeStructure.feeCategory,
+        session: payment.feeAssignment.academicSession
+          ? {
+              id: payment.feeAssignment.academicSession.id,
+              name: payment.feeAssignment.academicSession.sessionName,
+              isCurrent: payment.feeAssignment.academicSession.isCurrent,
+            }
+          : null,
+        assignedAmount: payment.feeAssignment.assignedAmount.toNumber(),
+        concessionAmount: payment.feeAssignment.concessionAmount.toNumber(),
+        netAmount: payment.feeAssignment.netAmount.toNumber(),
+        paidBeforeThisReceipt: previousPaidAmount.toNumber(),
+        paidAfterThisReceipt: payment.feeAssignment.paidAmount.toNumber(),
+        dueAfterThisReceipt: dueAfterPayment.toNumber(),
+      },
+      receivedBy: payment.feeReceipt.receivedByUser
+        ? {
+            id: payment.feeReceipt.receivedByUser.id,
+            name: payment.feeReceipt.receivedByUser.fullName,
+          }
+        : null,
+      template: {
+        receiptTitle: template.receiptTitle ?? 'Fee Payment Receipt',
+        receiptSubtitle:
+          template.receiptSubtitle ?? 'Official acknowledgement of fee payment',
+        headerNote:
+          template.headerNote ??
+          'Thank you for your payment. Please keep this receipt for your records.',
+        footerNote:
+          template.footerNote ??
+          'This is a system-generated receipt and is valid without a physical stamp.',
+        termsAndConditions:
+          template.termsAndConditions ??
+          'Fees once paid are subject to the school fee policy and may not be refundable.',
+        signatureLabel: template.signatureLabel ?? 'Authorized Signatory',
+        showLogo: template.showLogo ?? true,
+        showSignature: template.showSignature ?? true,
+        customFields: Array.isArray(template.customFields)
+          ? template.customFields
+              .filter(
+                (field) =>
+                  field &&
+                  typeof field === 'object' &&
+                  !Array.isArray(field) &&
+                  typeof field.label === 'string' &&
+                  typeof field.value === 'string',
+              )
+              .map((field) => ({
+                label: String(field.label),
+                value: String(field.value),
+              }))
+          : [],
+      },
+    };
+  }
+
+  private getSettingsJson(value: Prisma.JsonValue) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {} as Record<string, any>;
+    }
+
+    return value as Record<string, any>;
+  }
+
+  private getBrandingSettings(settingsJson: Record<string, any>) {
+    if (
+      !settingsJson.branding ||
+      typeof settingsJson.branding !== 'object' ||
+      Array.isArray(settingsJson.branding)
+    ) {
+      return {} as Record<string, any>;
+    }
+
+    return settingsJson.branding as Record<string, any>;
+  }
+
+  private getReceiptTemplateSettings(settingsJson: Record<string, any>) {
+    if (
+      !settingsJson.feeReceiptTemplate ||
+      typeof settingsJson.feeReceiptTemplate !== 'object' ||
+      Array.isArray(settingsJson.feeReceiptTemplate)
+    ) {
+      return {} as Record<string, any>;
+    }
+
+    return settingsJson.feeReceiptTemplate as Record<string, any>;
+  }
+
+  private getAddress(value: Prisma.JsonValue) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {
+        line1: null,
+        line2: null,
+        city: null,
+        state: null,
+        country: null,
+        postalCode: null,
+      };
+    }
+
+    const address = value as Record<string, unknown>;
+
+    return {
+      line1: typeof address.line1 === 'string' ? address.line1 : null,
+      line2: typeof address.line2 === 'string' ? address.line2 : null,
+      city: typeof address.city === 'string' ? address.city : null,
+      state: typeof address.state === 'string' ? address.state : null,
+      country: typeof address.country === 'string' ? address.country : null,
+      postalCode: typeof address.postalCode === 'string' ? address.postalCode : null,
     };
   }
 }

@@ -120,6 +120,17 @@ export class ExamsController {
     return this.examsService.findExamResults(currentUser, id, schoolId ?? null);
   }
 
+  @Get('exams/:id/marks')
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
+  @Permissions('exams.read')
+  findExamMarks(
+    @CurrentUser() currentUser: JwtUser,
+    @Param('id') id: string,
+    @Query('schoolId') schoolId?: string,
+  ) {
+    return this.examsService.findExamMarks(currentUser, id, schoolId ?? null);
+  }
+
   @Get('students/:id/results')
   @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
   @Permissions('exams.read')

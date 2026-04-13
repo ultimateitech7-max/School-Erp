@@ -14,10 +14,9 @@ export class UpdateSchoolBrandingDto {
   schoolId?: string;
 
   @IsOptional()
-  @IsUrl({
-    require_tld: false,
-    require_protocol: true,
-  })
+  @IsString()
+  @MaxLength(2048)
+  @Transform(({ value }) => (value ? String(value).trim() : undefined))
   logoUrl?: string;
 
   @IsOptional()

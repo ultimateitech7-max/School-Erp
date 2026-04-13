@@ -25,7 +25,10 @@ interface ExamDateSheetTableProps {
   loading: boolean;
   meta: ApiMeta;
   onPageChange: (page: number) => void;
+  onEdit: (item: ExamDateSheetRecord) => void;
+  onDelete: (id: string) => Promise<void>;
   onPublish: (id: string) => Promise<void>;
+  deletingId: string | null;
   publishingId: string | null;
 }
 
@@ -34,7 +37,10 @@ export function ExamDateSheetTable({
   loading,
   meta,
   onPageChange,
+  onEdit,
+  onDelete,
   onPublish,
+  deletingId,
   publishingId,
 }: ExamDateSheetTableProps) {
   const handlePrint = (item: ExamDateSheetRecord) => {
@@ -113,8 +119,8 @@ export function ExamDateSheetTable({
   }
 
   return (
-    <section className="card panel">
-      <div className="panel-heading">
+    <section className="card panel compact-panel-stack">
+      <div className="panel-heading compact-panel-heading">
         <div>
           <h2>Exam Date Sheets</h2>
           <p className="muted-text">
@@ -123,7 +129,7 @@ export function ExamDateSheetTable({
         </div>
       </div>
 
-      <div className="dashboard-stack">
+      <div className="compact-summary-list">
         {items.map((item) => (
           <article className="exam-sheet-card printable-sheet" key={item.id}>
             <div className="exam-sheet-card-header">
@@ -137,23 +143,46 @@ export function ExamDateSheetTable({
                 <Badge tone={item.isPublished ? 'success' : 'warning'}>
                   {item.isPublished ? 'Published' : 'Draft'}
                 </Badge>
+                <Button
+                  onClick={() => onEdit(item)}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  Edit
+                </Button>
+                <Button
+                  disabled={deletingId === item.id}
+                  onClick={() => void onDelete(item.id)}
+                  size="sm"
+                  type="button"
+                  variant="danger"
+                >
+                  {deletingId === item.id ? 'Deleting...' : 'Delete'}
+                </Button>
                 {!item.isPublished ? (
                   <Button
                     disabled={publishingId === item.id}
                     onClick={() => void onPublish(item.id)}
+                    size="sm"
                     type="button"
                     variant="primary"
                   >
                     {publishingId === item.id ? 'Publishing...' : 'Publish'}
                   </Button>
                 ) : null}
-                <Button onClick={() => handlePrint(item)} type="button" variant="secondary">
+                <Button
+                  onClick={() => handlePrint(item)}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
                   Print
                 </Button>
               </div>
             </div>
 
-            <TableWrap>
+            <TableWrap className="compact-table-wrap">
               <Table>
                 <thead>
                   <tr>

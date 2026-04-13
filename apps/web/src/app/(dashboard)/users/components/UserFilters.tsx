@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import type { UserRole, UserStatus, UserRoleOption } from '@/utils/api';
 
 interface UserFiltersProps {
@@ -12,6 +13,7 @@ interface UserFiltersProps {
   onStatusChange: (value: UserStatus | '') => void;
   onReset: () => void;
   showCreateReset: boolean;
+  actions?: ReactNode;
 }
 
 export function UserFilters({
@@ -24,6 +26,7 @@ export function UserFilters({
   onStatusChange,
   onReset,
   showCreateReset,
+  actions,
 }: UserFiltersProps) {
   return (
     <section className="card panel users-toolbar">
@@ -71,6 +74,7 @@ export function UserFilters({
             New User
           </button>
         ) : null}
+        {actions}
       </div>
     </section>
   );

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -77,5 +78,27 @@ export class ExamDateSheetsController {
     @Query('schoolId') schoolId?: string,
   ) {
     return this.examDateSheetsService.publish(currentUser, id, schoolId ?? null);
+  }
+
+  @Patch(':id')
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN)
+  @Permissions('exams.manage')
+  update(
+    @CurrentUser() currentUser: JwtUser,
+    @Param('id') id: string,
+    @Body() dto: CreateExamDateSheetDto,
+  ) {
+    return this.examDateSheetsService.update(currentUser, id, dto);
+  }
+
+  @Delete(':id')
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN)
+  @Permissions('exams.manage')
+  remove(
+    @CurrentUser() currentUser: JwtUser,
+    @Param('id') id: string,
+    @Query('schoolId') schoolId?: string,
+  ) {
+    return this.examDateSheetsService.remove(currentUser, id, schoolId ?? null);
   }
 }

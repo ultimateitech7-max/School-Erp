@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PaginationControls } from '@/components/ui/pagination-controls';
+import { Spinner } from '@/components/ui/spinner';
 import { Table, TableCell, TableHeadCell, TableWrap } from '@/components/ui/table';
 
 interface AttendanceTableProps {
@@ -37,7 +38,7 @@ export function AttendanceTable({
         </div>
       </div>
 
-      {loading ? <p>Loading attendance...</p> : null}
+      {loading ? <Spinner label="Loading attendance..." /> : null}
 
       {!loading && records.length === 0 ? (
         <EmptyState

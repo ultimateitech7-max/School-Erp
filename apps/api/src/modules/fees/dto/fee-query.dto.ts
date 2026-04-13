@@ -36,6 +36,10 @@ export class FeeQueryDto {
 
   @IsOptional()
   @IsUUID()
+  sectionId?: string;
+
+  @IsOptional()
+  @IsUUID()
   sessionId?: string;
 
   @IsOptional()

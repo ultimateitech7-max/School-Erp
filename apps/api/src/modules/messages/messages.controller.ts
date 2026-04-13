@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { RoleType } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -48,5 +48,18 @@ export class MessagesController {
   @Patch(':id/read')
   markRead(@CurrentUser() currentUser: JwtUser, @Param('id') id: string) {
     return this.messagesService.markRead(currentUser, id);
+  }
+
+  @Delete('thread/:otherUserId')
+  removeThread(
+    @CurrentUser() currentUser: JwtUser,
+    @Param('otherUserId') otherUserId: string,
+  ) {
+    return this.messagesService.removeThread(currentUser, otherUserId);
+  }
+
+  @Delete(':id')
+  remove(@CurrentUser() currentUser: JwtUser, @Param('id') id: string) {
+    return this.messagesService.remove(currentUser, id);
   }
 }

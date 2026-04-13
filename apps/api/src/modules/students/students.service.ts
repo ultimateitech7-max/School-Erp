@@ -5,15 +5,18 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import {
   AdmissionStatus,
   Prisma,
   RoleType,
   StudentStatus,
+  UserType,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { AuditService } from '../audit/audit.service';
+import { FeesService } from '../fees/fees.service';
 import { HolidaysService } from '../holidays/holidays.service';
 import { HomeworkService } from '../homework/homework.service';
 import { JwtUser } from '../auth/strategies/jwt.strategy';
@@ -26,6 +29,7 @@ const STUDENT_LIST_TTL_SECONDS = 60 * 5;
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 100;
+const GLOBAL_SCOPE_KEY = 'GLOBAL';
 
 const studentDetailsInclude = Prisma.validator<Prisma.StudentInclude>()({
   admissions: {
@@ -56,6 +60,13 @@ const studentDetailsInclude = Prisma.validator<Prisma.StudentInclude>()({
       },
     },
   },
+  user: {
+    select: {
+      id: true,
+      email: true,
+      isActive: true,
+    },
+  },
 });
 
 type StudentWithDetails = Prisma.StudentGetPayload<{
@@ -71,6 +82,7 @@ export class StudentsService {
     private readonly noticesService: NoticesService,
     private readonly homeworkService: HomeworkService,
     private readonly holidaysService: HolidaysService,
+    private readonly feesService: FeesService,
   ) {}
 
   async create(currentUser: JwtUser, dto: CreateStudentDto) {
@@ -129,6 +141,8 @@ export class StudentsService {
       page,
       limit,
       search,
+      classId: query.classId,
+      sectionId: query.sectionId,
     });
 
     const payload = await this.redisService.remember(
@@ -162,6 +176,12 @@ export class StudentsService {
                     },
                   },
                   {
+                    studentCode: {
+                      contains: search,
+                      mode: 'insensitive',
+                    },
+                  },
+                  {
                     registrationNumber: {
                       contains: this.normalizeRegistrationNumber(search),
                       mode: 'insensitive',
@@ -178,6 +198,19 @@ export class StudentsService {
                     },
                   },
                 ],
+              }
+            : {}),
+          ...(query.classId || query.sectionId
+            ? {
+                admissions: {
+                  some: {
+                    admissionStatus: {
+                      in: ['ACTIVE', 'PROMOTED'],
+                    },
+                    ...(query.classId ? { classId: query.classId } : {}),
+                    ...(query.sectionId ? { sectionId: query.sectionId } : {}),
+                  },
+                },
               }
             : {}),
         };
@@ -287,15 +320,16 @@ export class StudentsService {
 
   async getPortalDashboard(currentUser: JwtUser) {
     const student = await this.findPortalStudentOrThrow(currentUser);
-    const [historyPayload, noticesResponse] = await Promise.all([
+    const [historyPayload, noticesResponse, holidaysResponse] = await Promise.all([
       this.buildStudentHistoryPayload(student),
       this.noticesService.findPortalNotices(currentUser),
+      this.holidaysService.findPortal(currentUser),
     ]);
     const currentEnrollment =
       historyPayload.enrollmentHistory.find((entry) => entry.session.isCurrent) ??
       historyPayload.enrollmentHistory.at(-1) ??
       null;
-    const [homework, holidays] = await Promise.all([
+    const [homework] = await Promise.all([
       currentEnrollment?.class?.id
         ? this.homeworkService.findForStudentScope(
             student.schoolId,
@@ -303,7 +337,6 @@ export class StudentsService {
             currentEnrollment.section?.id ?? null,
           )
         : Promise.resolve([]),
-      this.holidaysService.getUpcomingForSchool(student.schoolId),
     ]);
 
     return {
@@ -316,9 +349,43 @@ export class StudentsService {
         feeSummary: historyPayload.feeSummary,
         resultSummary: historyPayload.resultSummary,
         homework,
-        holidays,
+        holidays: holidaysResponse.data,
         notices: noticesResponse.data,
       },
+    };
+  }
+
+  async getPortalBranding(currentUser: JwtUser) {
+    if (currentUser.role !== RoleType.STUDENT) {
+      throw new ForbiddenException('You do not have access to this resource.');
+    }
+
+    if (!currentUser.schoolId) {
+      throw new ForbiddenException(
+        'This action requires a school-scoped authenticated user.',
+      );
+    }
+
+    const school = await this.prisma.school.findUnique({
+      where: {
+        id: currentUser.schoolId,
+      },
+      select: {
+        id: true,
+        schoolCode: true,
+        name: true,
+        settingsJson: true,
+      },
+    });
+
+    if (!school) {
+      throw new NotFoundException('School not found.');
+    }
+
+    return {
+      success: true,
+      message: 'Student portal branding fetched successfully.',
+      data: this.serializePortalBranding(school),
     };
   }
 
@@ -337,14 +404,15 @@ export class StudentsService {
   }
 
   async getPortalHolidays(currentUser: JwtUser) {
-    const dashboard = await this.getPortalDashboard(currentUser);
+    const student = await this.findPortalStudentOrThrow(currentUser);
+    const holidays = await this.holidaysService.findPortal(currentUser);
 
     return {
       success: true,
       message: 'Student holidays fetched successfully.',
       data: {
-        student: dashboard.data.student,
-        holidays: dashboard.data.holidays,
+        student: this.serializeStudent(student),
+        holidays: holidays.data,
       },
     };
   }
@@ -386,6 +454,22 @@ export class StudentsService {
     };
   }
 
+  async getPortalFeeReceipt(currentUser: JwtUser, paymentId: string) {
+    return this.feesService.getPaymentReceiptForStudent(currentUser, paymentId);
+  }
+
+  async getParentFeeReceipt(
+    currentUser: JwtUser,
+    studentId: string,
+    paymentId: string,
+  ) {
+    return this.feesService.getPaymentReceiptForParent(
+      currentUser,
+      studentId,
+      paymentId,
+    );
+  }
+
   async getPortalResults(currentUser: JwtUser, sessionId?: string | null) {
     const student = await this.findPortalStudentOrThrow(currentUser);
     const historyPayload = await this.buildStudentHistoryPayload(student);
@@ -400,6 +484,39 @@ export class StudentsService {
           : historyPayload.resultSummary,
       },
     };
+  }
+
+  async getPortalExams(currentUser: JwtUser, sessionId?: string | null) {
+    const student = await this.findPortalStudentOrThrow(currentUser);
+
+    return {
+      success: true,
+      message: 'Student exams fetched successfully.',
+      data: await this.buildPortalExamPayload(student, sessionId ?? null),
+    };
+  }
+
+  async getScopedStudentExamPayload(
+    studentId: string,
+    schoolId: string,
+    sessionId?: string | null,
+  ) {
+    const student = await this.prisma.student.findFirst({
+      where: {
+        id: studentId,
+        schoolId,
+        status: {
+          not: StudentStatus.INACTIVE,
+        },
+      },
+      include: studentDetailsInclude,
+    });
+
+    if (!student) {
+      throw new NotFoundException('Student not found.');
+    }
+
+    return this.buildPortalExamPayload(student, sessionId ?? null);
   }
 
   async getScopedStudentHistoryPayload(studentId: string, schoolId: string) {
@@ -452,6 +569,47 @@ export class StudentsService {
     }
 
     return this.findPortalStudentByUserId(currentUser.id, currentUser.schoolId);
+  }
+
+  private serializePortalBranding(school: {
+    id: string;
+    schoolCode: string;
+    name: string;
+    settingsJson: Prisma.JsonValue;
+  }) {
+    const settingsJson = this.getSettingsJson(school.settingsJson);
+    const branding = this.getBrandingSettings(settingsJson);
+
+    return {
+      schoolId: school.id,
+      schoolCode: school.schoolCode,
+      schoolName: school.name,
+      logoUrl: branding.logoUrl ?? null,
+      primaryColor: branding.primaryColor ?? null,
+      secondaryColor: branding.secondaryColor ?? null,
+      website: branding.website ?? null,
+      supportEmail: branding.supportEmail ?? null,
+    };
+  }
+
+  private getSettingsJson(value: Prisma.JsonValue) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {} as Record<string, any>;
+    }
+
+    return value as Record<string, any>;
+  }
+
+  private getBrandingSettings(settingsJson: Record<string, any>) {
+    if (
+      !settingsJson.branding ||
+      typeof settingsJson.branding !== 'object' ||
+      Array.isArray(settingsJson.branding)
+    ) {
+      return {} as Record<string, any>;
+    }
+
+    return settingsJson.branding as Record<string, any>;
   }
 
   private async buildStudentHistoryPayload(student: StudentWithDetails) {
@@ -571,6 +729,7 @@ export class StudentsService {
         select: {
           id: true,
           sessionId: true,
+          attendanceDate: true,
           status: true,
           academicSession: {
             select: {
@@ -791,6 +950,154 @@ export class StudentsService {
     };
   }
 
+  private async buildPortalExamPayload(
+    student: StudentWithDetails,
+    sessionId?: string | null,
+  ) {
+    const historyPayload = await this.buildStudentHistoryPayload(student);
+    const scopedResultSummary = sessionId
+      ? this.filterResultBySession(historyPayload.resultSummary, sessionId)
+      : historyPayload.resultSummary;
+    const relevantEnrollments = historyPayload.enrollmentHistory.filter((entry) =>
+      sessionId ? entry.session.id === sessionId : true,
+    );
+    const classIds = Array.from(
+      new Set(relevantEnrollments.map((entry) => entry.class.id).filter(Boolean)),
+    );
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const upcomingDateSheets = classIds.length
+      ? await this.prisma.examDateSheet.findMany({
+          where: {
+            schoolId: student.schoolId,
+            classId: {
+              in: classIds,
+            },
+            isPublished: true,
+            entries: {
+              some: {
+                examDate: {
+                  gte: today,
+                },
+              },
+            },
+          },
+          include: {
+            school: {
+              select: {
+                id: true,
+                name: true,
+                schoolCode: true,
+              },
+            },
+            academicClass: {
+              select: {
+                id: true,
+                className: true,
+                classCode: true,
+              },
+            },
+            entries: {
+              include: {
+                subject: {
+                  select: {
+                    id: true,
+                    subjectName: true,
+                    subjectCode: true,
+                  },
+                },
+              },
+              orderBy: [{ examDate: 'asc' }, { startTime: 'asc' }],
+            },
+          },
+          orderBy: [{ createdAt: 'desc' }],
+        })
+      : [];
+
+    const completedExams = scopedResultSummary.bySession
+      .flatMap((entry) => entry.results)
+      .sort(
+        (left, right) =>
+          new Date(right.startDate).getTime() - new Date(left.startDate).getTime(),
+      );
+
+    return {
+      student: historyPayload.student,
+      currentEnrollment:
+        relevantEnrollments.find((entry) => entry.session.isCurrent) ??
+        relevantEnrollments.at(-1) ??
+        null,
+      sessions: historyPayload.enrollmentHistory.map((entry) => entry.session).filter(
+        (session, index, items) => items.findIndex((item) => item.id === session.id) === index,
+      ),
+      upcomingDateSheets: upcomingDateSheets.map((item) =>
+        this.serializePortalDateSheet(item),
+      ),
+      completedExams,
+    };
+  }
+
+  private serializePortalDateSheet(record: {
+    id: string;
+    schoolId: string;
+    examName: string;
+    isPublished: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    school: {
+      id: string;
+      name: string;
+      schoolCode: string;
+    };
+    academicClass: {
+      id: string;
+      className: string;
+      classCode: string;
+    };
+    entries: Array<{
+      id: string;
+      examDate: Date;
+      startTime: string;
+      endTime: string;
+      subject: {
+        id: string;
+        subjectName: string;
+        subjectCode: string;
+      };
+    }>;
+  }) {
+    return {
+      id: record.id,
+      schoolId: record.schoolId,
+      examName: record.examName,
+      isPublished: record.isPublished,
+      school: {
+        id: record.school.id,
+        name: record.school.name,
+        schoolCode: record.school.schoolCode,
+      },
+      class: {
+        id: record.academicClass.id,
+        name: record.academicClass.className,
+        classCode: record.academicClass.classCode,
+      },
+      entries: record.entries.map((entry) => ({
+        id: entry.id,
+        subject: {
+          id: entry.subject.id,
+          name: entry.subject.subjectName,
+          code: entry.subject.subjectCode,
+        },
+        examDate: entry.examDate.toISOString(),
+        startTime: entry.startTime,
+        endTime: entry.endTime,
+      })),
+      createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString(),
+    };
+  }
+
   async update(currentUser: JwtUser, id: string, dto: UpdateStudentDto) {
     const existingStudent = await this.findStudentOrThrow(
       currentUser,
@@ -840,6 +1147,19 @@ export class StudentsService {
       if (this.hasAdmissionPayload(dto)) {
         await this.upsertAdmission(tx, schoolId, id, dto);
       }
+
+      await this.syncPortalUser(tx, schoolId, id, {
+        fullName: updatedName ?? existingStudent.fullName,
+        email:
+          dto.email !== undefined
+            ? dto.email ?? null
+            : existingStudent.email ?? null,
+        phone:
+          dto.phone !== undefined
+            ? dto.phone ?? null
+            : existingStudent.phone ?? null,
+        portalPassword: dto.portalPassword?.trim() ?? null,
+      });
 
       return tx.student.findUniqueOrThrow({
         where: { id },
@@ -973,6 +1293,8 @@ export class StudentsService {
     },
   ) {
     const normalizedName = dto.name.trim();
+    const normalizedEmail = dto.email?.trim().toLowerCase() ?? null;
+    const normalizedPhone = dto.phone?.trim() ?? null;
     const { firstName, lastName } = this.splitName(normalizedName);
     const studentCode =
       dto.studentCode?.trim().toUpperCase() ??
@@ -1004,8 +1326,8 @@ export class StudentsService {
             firstName,
             lastName,
             fullName: normalizedName,
-            email: dto.email ?? null,
-            phone: dto.phone ?? null,
+            email: normalizedEmail,
+            phone: normalizedPhone,
             gender: dto.gender ?? 'OTHER',
             dateOfBirth: new Date(dto.dateOfBirth ?? '2000-01-01'),
             joinedOn: dto.joinedOn ? new Date(dto.joinedOn) : null,
@@ -1014,6 +1336,12 @@ export class StudentsService {
         });
 
         await this.upsertAdmission(tx, schoolId, createdStudent.id, dto);
+        await this.syncPortalUser(tx, schoolId, createdStudent.id, {
+          fullName: normalizedName,
+          email: normalizedEmail,
+          phone: normalizedPhone,
+          portalPassword: dto.portalPassword?.trim() ?? null,
+        });
 
         return tx.student.findUniqueOrThrow({
           where: { id: createdStudent.id },
@@ -1219,6 +1547,121 @@ export class StudentsService {
     });
   }
 
+  private async syncPortalUser(
+    tx: Prisma.TransactionClient,
+    schoolId: string,
+    studentId: string,
+    payload: {
+      fullName: string;
+      email: string | null;
+      phone: string | null;
+      portalPassword: string | null;
+    },
+  ) {
+    const student = await tx.student.findUnique({
+      where: {
+        id: studentId,
+      },
+      select: {
+        id: true,
+        userId: true,
+      },
+    });
+
+    if (!student) {
+      throw new NotFoundException('Student not found.');
+    }
+
+    const linkedUser = student.userId
+      ? await tx.user.findUnique({
+          where: {
+            id: student.userId,
+          },
+          select: {
+            id: true,
+            email: true,
+          },
+        })
+      : null;
+
+    if (payload.portalPassword && !payload.email) {
+      throw new BadRequestException(
+        'Email is required to enable student portal access.',
+      );
+    }
+
+    if (!linkedUser && !payload.portalPassword) {
+      return;
+    }
+
+    if (linkedUser && !payload.email) {
+      throw new BadRequestException(
+        'Student email is required while portal access is enabled.',
+      );
+    }
+
+    if (!payload.email) {
+      return;
+    }
+
+    const passwordHash = payload.portalPassword
+      ? await bcrypt.hash(payload.portalPassword, 10)
+      : null;
+
+    if (linkedUser) {
+      await this.ensureUniquePortalEmail(tx, payload.email, linkedUser.id);
+      await tx.user.update({
+        where: {
+          id: linkedUser.id,
+        },
+        data: {
+          fullName: payload.fullName,
+          email: payload.email,
+          phone: payload.phone,
+          designation: 'Student',
+          ...(passwordHash
+            ? {
+                passwordHash,
+                passwordChangedAt: new Date(),
+              }
+            : {}),
+        },
+      });
+
+      return;
+    }
+
+    await this.ensureUniquePortalEmail(tx, payload.email);
+
+    const studentRole = await this.resolveStudentPortalRole(tx, schoolId);
+    const createdUser = await tx.user.create({
+      data: {
+        schoolId,
+        roleId: studentRole.id,
+        fullName: payload.fullName,
+        email: payload.email,
+        passwordHash: passwordHash!,
+        phone: payload.phone,
+        userType: UserType.ADMIN,
+        designation: 'Student',
+        isActive: true,
+        passwordChangedAt: new Date(),
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    await tx.student.update({
+      where: {
+        id: studentId,
+      },
+      data: {
+        userId: createdUser.id,
+      },
+    });
+  }
+
   private async resolveAdmissionSessionId(
     tx: Prisma.TransactionClient,
     schoolId: string,
@@ -1261,6 +1704,32 @@ export class StudentsService {
     }
 
     return currentSession.id;
+  }
+
+  private async resolveStudentPortalRole(
+    tx: Prisma.TransactionClient,
+    schoolId: string,
+  ) {
+    const scopedRoles = await tx.role.findMany({
+      where: {
+        roleType: RoleType.STUDENT,
+        isActive: true,
+        OR: [{ scopeKey: schoolId }, { scopeKey: GLOBAL_SCOPE_KEY }],
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
+
+    const preferredRole =
+      scopedRoles.find((role) => role.scopeKey === schoolId) ??
+      scopedRoles.find((role) => role.scopeKey === GLOBAL_SCOPE_KEY);
+
+    if (!preferredRole) {
+      throw new NotFoundException('Student role not found.');
+    }
+
+    return preferredRole;
   }
 
   private hasAdmissionPayload(
@@ -1352,6 +1821,25 @@ export class StudentsService {
       throw new ConflictException(
         'Registration number is already in use for this school.',
       );
+    }
+  }
+
+  private async ensureUniquePortalEmail(
+    tx: Prisma.TransactionClient,
+    email: string,
+    excludeUserId?: string,
+  ) {
+    const existingUser = await tx.user.findUnique({
+      where: {
+        email,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (existingUser && existingUser.id !== excludeUserId) {
+      throw new ConflictException('Email is already in use.');
     }
   }
 
@@ -1496,7 +1984,13 @@ export class StudentsService {
 
   private buildStudentsCacheKey(
     schoolScope: string,
-    query: { page: number; limit: number; search: string },
+    query: {
+      page: number;
+      limit: number;
+      search: string;
+      classId?: string;
+      sectionId?: string;
+    },
   ) {
     return this.redisService.buildStudentListKey(
       schoolScope,
@@ -1519,6 +2013,7 @@ export class StudentsService {
     attendanceRecords: Array<{
       id: string;
       sessionId: string;
+      attendanceDate: Date;
       status: string;
       academicSession: {
         id: string;
@@ -1624,6 +2119,21 @@ export class StudentsService {
             : 0,
       },
       bySession,
+      records: attendanceRecords
+        .map((record) => ({
+          id: record.id,
+          date: record.attendanceDate.toISOString(),
+          status: record.status,
+          session: {
+            id: record.academicSession.id,
+            name: record.academicSession.sessionName,
+            isCurrent: record.academicSession.isCurrent,
+          },
+        }))
+        .sort(
+          (left, right) =>
+            new Date(right.date).getTime() - new Date(left.date).getTime(),
+        ),
     };
   }
 
@@ -1660,6 +2170,7 @@ export class StudentsService {
             : 0,
       },
       bySession: matchedSession,
+      records: summary.records.filter((entry) => entry.session.id === sessionId),
     };
   }
 
@@ -2019,6 +2530,13 @@ export class StudentsService {
         ? {
             id: latestAdmission.section.id,
             name: latestAdmission.section.sectionName,
+          }
+        : null,
+      portalAccess: student.user
+        ? {
+            userId: student.user.id,
+            email: student.user.email,
+            isActive: student.user.isActive,
           }
         : null,
       schoolId: student.schoolId,

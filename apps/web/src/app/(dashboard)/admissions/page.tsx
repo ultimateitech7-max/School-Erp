@@ -11,9 +11,10 @@ import {
 import { AdmissionFilters } from './components/AdmissionFilters';
 import { AdmissionForm } from './components/AdmissionForm';
 import { AdmissionTable } from './components/AdmissionTable';
+import { CsvDownloadButton } from '@/components/ui/csv-download-button';
 import { Banner } from '@/components/ui/banner';
 import { Badge } from '@/components/ui/badge';
-import { Field, Select, Textarea } from '@/components/ui/field';
+import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { Modal } from '@/components/ui/modal';
 import { Spinner } from '@/components/ui/spinner';
 import { useSchoolScope } from '@/hooks/use-school-scope';
@@ -21,12 +22,15 @@ import { getStoredAuthSession } from '@/utils/auth-storage';
 import {
   apiFetch,
   createQueryString,
+  type AdmissionEnrollPayload,
   type AdmissionApplicationRecord,
   type AdmissionApplicationStatus,
   type AdmissionFormPayload,
   type ApiMeta,
   type ApiSuccessResponse,
 } from '@/utils/api';
+import { admissionCsvColumns } from '@/utils/csv-exporters';
+import { buildCsvFilename, exportPaginatedApiCsv } from '@/utils/csv';
 
 const initialMeta: ApiMeta = {
   page: 1,
@@ -113,6 +117,9 @@ export default function AdmissionsPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [enrolling, setEnrolling] = useState(false);
   const [confirmEnrollOpen, setConfirmEnrollOpen] = useState(false);
+  const [enrollEmail, setEnrollEmail] = useState('');
+  const [enrollPassword, setEnrollPassword] = useState('');
+  const [enrollError, setEnrollError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [reloadIndex, setReloadIndex] = useState(0);
   const [searchInput, setSearchInput] = useState('');
@@ -166,6 +173,19 @@ export default function AdmissionsPage() {
       });
   }, [deferredSearch, page, reloadIndex, statusFilter]);
 
+  useEffect(() => {
+    if (!selectedAdmission) {
+      setEnrollEmail('');
+      setEnrollPassword('');
+      setEnrollError(null);
+      return;
+    }
+
+    setEnrollEmail(selectedAdmission.email ?? '');
+    setEnrollPassword('');
+    setEnrollError(null);
+  }, [confirmEnrollOpen, selectedAdmission]);
+
   const canCreate =
     authSession?.user.role === 'SCHOOL_ADMIN' ||
     Boolean(authSession?.user.schoolId) ||
@@ -174,6 +194,33 @@ export default function AdmissionsPage() {
   const nextStatuses = selectedAdmission ? getNextStatuses(selectedAdmission.status) : [];
   const canEnrollSelectedAdmission =
     selectedAdmission?.status === 'APPROVED' && !selectedAdmission.studentId;
+
+  const handleExportCsv = async () => {
+    try {
+      const count = await exportPaginatedApiCsv<AdmissionApplicationRecord>({
+        path: '/admissions',
+        params: {
+          search: deferredSearch || undefined,
+          status: statusFilter || undefined,
+        },
+        columns: admissionCsvColumns,
+        filename: buildCsvFilename(`admissions-${statusFilter || 'all'}`),
+      });
+
+      setMessage({
+        type: 'success',
+        text: `Downloaded ${count} admission record${count === 1 ? '' : 's'} as CSV.`,
+      });
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text:
+          error instanceof Error
+            ? error.message
+            : 'Failed to export admissions.',
+      });
+    }
+  };
 
   const handleCreate = async (payload: AdmissionFormPayload) => {
     setSubmitting(true);
@@ -279,8 +326,22 @@ export default function AdmissionsPage() {
       return;
     }
 
+    const normalizedEmail = enrollEmail.trim().toLowerCase();
+    const normalizedPassword = enrollPassword.trim();
+
+    if (normalizedPassword && !normalizedEmail) {
+      setEnrollError('Email is required to enable student portal access during enrollment.');
+      return;
+    }
+
+    if (normalizedPassword && normalizedPassword.length < 8) {
+      setEnrollError('Portal password must be at least 8 characters.');
+      return;
+    }
+
     setEnrolling(true);
     setMessage(null);
+    setEnrollError(null);
 
     try {
       const response = await apiFetch<
@@ -295,6 +356,10 @@ export default function AdmissionsPage() {
         }>
       >(`/admissions/${selectedAdmission.id}/enroll`, {
         method: 'POST',
+        body: JSON.stringify({
+          email: normalizedEmail || undefined,
+          portalPassword: normalizedPassword || undefined,
+        } satisfies AdmissionEnrollPayload),
       });
 
       setSelectedAdmission(response.data.admission);
@@ -349,6 +414,13 @@ export default function AdmissionsPage() {
 
         <div className="stacked-panels">
           <AdmissionFilters
+            actions={
+              <CsvDownloadButton
+                label="Download CSV"
+                loadingLabel="Exporting..."
+                onDownload={handleExportCsv}
+              />
+            }
             hasActiveFilters={hasActiveFilters}
             loading={loading}
             search={searchInput}
@@ -374,6 +446,7 @@ export default function AdmissionsPage() {
       </div>
 
       <Modal
+        className="ui-modal-wide admission-detail-modal"
         description="Review complete application details and move the student through the workflow."
         open={Boolean(selectedAdmission) || detailLoading}
         title="Admission Detail"
@@ -392,7 +465,7 @@ export default function AdmissionsPage() {
             <p className="muted-text">Loading admission details...</p>
           </div>
         ) : selectedAdmission ? (
-          <div className="stacked-panels">
+          <div className="stacked-panels admission-detail-layout">
             <div className="detail-grid">
               <div className="detail-card">
                 <span className="eyebrow">Student</span>
@@ -408,7 +481,7 @@ export default function AdmissionsPage() {
               </div>
             </div>
 
-            <div className="detail-card">
+            <div className="detail-card admission-detail-wide">
               <span className="eyebrow">Workflow Timeline</span>
               <div className="inline-badge-row">
                 {statusTimeline.map((status) => {
@@ -449,7 +522,7 @@ export default function AdmissionsPage() {
               </div>
             </div>
 
-            <div className="detail-card">
+            <div className="detail-card admission-detail-wide">
               <span className="eyebrow">Address</span>
               <p>{selectedAdmission.address}</p>
             </div>
@@ -484,7 +557,7 @@ export default function AdmissionsPage() {
               </div>
             </div>
 
-            <div className="simple-form">
+            <div className="simple-form admission-detail-form">
               <Field label="Update Status">
                 <Select
                   disabled={
@@ -519,7 +592,7 @@ export default function AdmissionsPage() {
               </Field>
             </div>
 
-            <div className="table-actions">
+            <div className="table-actions admission-detail-actions">
               <button
                 className="primary-button"
                 disabled={
@@ -621,11 +694,52 @@ export default function AdmissionsPage() {
               {selectedAdmission?.classApplied} • {selectedAdmission?.phone}
             </p>
           </div>
+          <div className="detail-grid">
+            <Field
+              error={enrollError?.toLowerCase().includes('email') ? enrollError : undefined}
+              hint="Leave blank to skip immediate portal access."
+              label="Student Login Email"
+            >
+              <Input
+                autoComplete="email"
+                disabled={enrolling}
+                placeholder="student@school.com"
+                type="email"
+                value={enrollEmail}
+                onChange={(event) => {
+                  setEnrollEmail(event.target.value);
+                  setEnrollError(null);
+                }}
+              />
+            </Field>
+            <Field
+              error={
+                enrollError && !enrollError.toLowerCase().includes('email')
+                  ? enrollError
+                  : undefined
+              }
+              hint="Set this now to make the student login-ready right after enrollment."
+              label="Portal Password"
+            >
+              <Input
+                autoComplete="new-password"
+                disabled={enrolling}
+                placeholder="Minimum 8 characters"
+                type="password"
+                value={enrollPassword}
+                onChange={(event) => {
+                  setEnrollPassword(event.target.value);
+                  setEnrollError(null);
+                }}
+              />
+            </Field>
+          </div>
           <Banner tone="info">
             <strong>Ready to enroll</strong>
             <p>
               This will create a real student record, assign a permanent registration
-              number, and create the current academic session enrollment.
+              number, and create the current academic session enrollment. Add login
+              credentials above if the student should access the portal immediately.
             </p>
           </Banner>
         </div>

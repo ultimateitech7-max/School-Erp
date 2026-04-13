@@ -16,6 +16,7 @@ import { SinglePromotionForm } from './components/SinglePromotionForm';
 import { Banner } from '@/components/ui/banner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { CsvDownloadButton } from '@/components/ui/csv-download-button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Modal } from '@/components/ui/modal';
 import { PaginationControls } from '@/components/ui/pagination-controls';
@@ -40,6 +41,16 @@ import {
   type PromotionRecord,
   type PromoteStudentPayload,
 } from '@/utils/api';
+import {
+  promotionEligibleCsvColumns,
+  promotionHistoryCsvColumns,
+  promotionPreviewCsvColumns,
+} from '@/utils/csv-exporters';
+import {
+  buildCsvFilename,
+  exportPaginatedApiCsv,
+  exportRowsToCsv,
+} from '@/utils/csv';
 
 const initialMeta: ApiMeta = {
   page: 1,
@@ -341,6 +352,75 @@ export default function PromotionsPage() {
     }
   };
 
+  const handleExportEligibleCsv = async () => {
+    try {
+      const count = await exportPaginatedApiCsv<PromotionEligibleStudentRecord>({
+        path: '/promotions/eligible',
+        params: {
+          search: deferredSearch || undefined,
+          fromAcademicSessionId,
+          fromClassId,
+          fromSectionId: fromSectionId || undefined,
+        },
+        columns: promotionEligibleCsvColumns,
+        filename: buildCsvFilename('promotion-eligible-students'),
+      });
+
+      setMessage({
+        type: 'success',
+        text: `Downloaded ${count} eligible student${count === 1 ? '' : 's'} as CSV.`,
+      });
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text:
+          error instanceof Error
+            ? error.message
+            : 'Failed to export eligible students.',
+      });
+    }
+  };
+
+  const handleExportHistoryCsv = async () => {
+    try {
+      const count = await exportPaginatedApiCsv<PromotionRecord>({
+        path: '/promotions/history',
+        params: {
+          search: deferredHistorySearch || undefined,
+          action: historyAction === 'ALL' ? undefined : historyAction,
+          toAcademicSessionId: historySessionId || undefined,
+          toClassId: historyClassId || undefined,
+        },
+        columns: promotionHistoryCsvColumns,
+        filename: buildCsvFilename('promotion-history'),
+      });
+
+      setMessage({
+        type: 'success',
+        text: `Downloaded ${count} promotion record${count === 1 ? '' : 's'} as CSV.`,
+      });
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text:
+          error instanceof Error ? error.message : 'Failed to export promotion history.',
+      });
+    }
+  };
+
+  const handleExportPreviewCsv = async () => {
+    const count = exportRowsToCsv(
+      bulkPreview?.items ?? [],
+      promotionPreviewCsvColumns,
+      buildCsvFilename('promotion-preview'),
+    );
+
+    setMessage({
+      type: 'success',
+      text: `Downloaded ${count} preview row${count === 1 ? '' : 's'} as CSV.`,
+    });
+  };
+
   const handleBulkPreview = async (payload: PromotionPreviewPayload) => {
     setPreviewingBulk(true);
     setMessage(null);
@@ -582,6 +662,11 @@ export default function PromotionsPage() {
                 </div>
 
                 <div className="table-actions">
+                  <CsvDownloadButton
+                    label="Download CSV"
+                    loadingLabel="Exporting..."
+                    onDownload={handleExportEligibleCsv}
+                  />
                   <button
                     className="secondary-button"
                     disabled={loadingEligible || eligibleStudents.length === 0}
@@ -705,6 +790,13 @@ export default function PromotionsPage() {
 
         {activeTab === 'preview' ? (
           <PromotionPreviewTable
+            actions={
+              <CsvDownloadButton
+                label="Download CSV"
+                loadingLabel="Exporting..."
+                onDownload={handleExportPreviewCsv}
+              />
+            }
             emptyDescription="Choose source filters, select students, and generate a preview to validate duplicates and source enrollments."
             emptyTitle="Preview students before confirmation."
             items={bulkPreview?.items ?? []}
@@ -774,6 +866,11 @@ export default function PromotionsPage() {
                 >
                   Reset
                 </button>
+                <CsvDownloadButton
+                  label="Download CSV"
+                  loadingLabel="Exporting..."
+                  onDownload={handleExportHistoryCsv}
+                />
               </div>
             </section>
 

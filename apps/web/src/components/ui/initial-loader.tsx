@@ -12,7 +12,7 @@ export function InitialLoader() {
   useEffect(() => {
     const minDelayTimer = window.setTimeout(() => {
       setMinimumDelayPassed(true);
-    }, 900);
+    }, 450);
 
     return () => {
       window.clearTimeout(minDelayTimer);

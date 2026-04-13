@@ -71,9 +71,14 @@ describe('School ERP API (e2e)', () => {
   let isolationAdmissionId = '';
   let invalidTransitionAdmissionId = '';
   let enrolledAdmissionStudentId = '';
+  let enrolledPortalAdmissionId = '';
+  let enrolledPortalStudentId = '';
+  let enrolledPortalUserId = '';
+  let enrolledPortalEmail = '';
   let rollbackAdmissionId = '';
   let admissionEligibleClassName = '';
   let fallbackAdmissionClassId = '';
+  const enrolledPortalPassword = 'Enroll@123';
   const updatedClassName = `Updated E2E Class ${Date.now()}`;
   const updatedSubjectName = `Updated E2E Subject ${Date.now()}`;
 
@@ -238,6 +243,7 @@ describe('School ERP API (e2e)', () => {
     for (const studentId of [
       createdStudentId,
       enrolledAdmissionStudentId,
+      enrolledPortalStudentId,
       attendanceStudentId,
       attendanceBulkStudentId,
       promotedStudentId,
@@ -296,6 +302,17 @@ describe('School ERP API (e2e)', () => {
       await prisma.user.updateMany({
         where: {
           id: studentPortalUserId,
+        },
+        data: {
+          isActive: false,
+        },
+      });
+    }
+
+    if (enrolledPortalUserId) {
+      await prisma.user.updateMany({
+        where: {
+          id: enrolledPortalUserId,
         },
         data: {
           isActive: false,
@@ -733,12 +750,14 @@ describe('School ERP API (e2e)', () => {
       .send({
         name: 'Updated E2E Student',
         phone: '8888888888',
+        portalPassword: 'Student@123',
       });
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
     expect(response.body.data.name).toBe('Updated E2E Student');
     expect(response.body.data.phone).toBe('8888888888');
+    expect(response.body.data.portalAccess?.email).toBeTruthy();
   });
 
   it('GET /students/:id blocks cross-school access', async () => {
@@ -858,8 +877,8 @@ describe('School ERP API (e2e)', () => {
 
   it('GET /settings/modules returns school module toggles', async () => {
     const response = await request(app.getHttpServer())
-      .get(`${apiPrefix}/settings/modules`)
-      .set('Authorization', `Bearer ${schoolAdminToken}`);
+      .get(`${apiPrefix}/settings/modules?schoolId=${defaultSchoolId}`)
+      .set('Authorization', `Bearer ${superAdminToken}`);
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
@@ -889,8 +908,9 @@ describe('School ERP API (e2e)', () => {
   it('PATCH /settings/modules updates module toggles', async () => {
     const response = await request(app.getHttpServer())
       .patch(`${apiPrefix}/settings/modules`)
-      .set('Authorization', `Bearer ${schoolAdminToken}`)
+      .set('Authorization', `Bearer ${superAdminToken}`)
       .send({
+        schoolId: defaultSchoolId,
         modules: [
           {
             key: 'dashboard',
@@ -1517,6 +1537,101 @@ describe('School ERP API (e2e)', () => {
     );
   });
 
+  it('POST /admissions creates a portal-ready admission candidate', async () => {
+    enrolledPortalEmail = `admission.portal.${Date.now()}@school.com`;
+
+    const response = await request(app.getHttpServer())
+      .post(`${apiPrefix}/admissions`)
+      .set('Authorization', `Bearer ${schoolAdminToken}`)
+      .send({
+        studentName: `Portal Admission ${Date.now()}`,
+        fatherName: 'Portal Father',
+        motherName: 'Portal Mother',
+        phone: `96${Date.now().toString().slice(-8)}`,
+        email: enrolledPortalEmail,
+        address: 'Lucknow, Uttar Pradesh',
+        classApplied: admissionEligibleClassName,
+        dob: '2014-02-14',
+      });
+
+    expect(response.status).toBe(201);
+    enrolledPortalAdmissionId = response.body.data.id as string;
+  });
+
+  it('PATCH /admissions/:id/status approves portal-ready admission', async () => {
+    for (const status of ['APPLIED', 'UNDER_REVIEW', 'APPROVED'] as const) {
+      const response = await request(app.getHttpServer())
+        .patch(`${apiPrefix}/admissions/${enrolledPortalAdmissionId}/status`)
+        .set('Authorization', `Bearer ${schoolAdminToken}`)
+        .send({ status });
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.status).toBe(status);
+    }
+  });
+
+  it('POST /admissions/:id/enroll enables student portal access during enrollment', async () => {
+    const response = await request(app.getHttpServer())
+      .post(`${apiPrefix}/admissions/${enrolledPortalAdmissionId}/enroll`)
+      .set('Authorization', `Bearer ${schoolAdminToken}`)
+      .send({
+        email: enrolledPortalEmail,
+        portalPassword: enrolledPortalPassword,
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.success).toBe(true);
+    enrolledPortalStudentId = response.body.data.student.id as string;
+
+    const student = await prisma.student.findUnique({
+      where: {
+        id: enrolledPortalStudentId,
+      },
+      select: {
+        id: true,
+        email: true,
+        userId: true,
+      },
+    });
+
+    const portalUser = student?.userId
+      ? await prisma.user.findUnique({
+          where: {
+            id: student.userId,
+          },
+          select: {
+            id: true,
+            email: true,
+            role: {
+              select: {
+                roleType: true,
+              },
+            },
+          },
+        })
+      : null;
+
+    enrolledPortalUserId = portalUser?.id ?? '';
+
+    expect(student?.email).toBe(enrolledPortalEmail);
+    expect(student?.userId).toBeTruthy();
+    expect(portalUser?.email).toBe(enrolledPortalEmail);
+    expect(portalUser?.role.roleType).toBe(RoleType.STUDENT);
+  });
+
+  it('POST /auth/login logs in with credentials created during admission enrollment', async () => {
+    const response = await request(app.getHttpServer())
+      .post(`${apiPrefix}/auth/login`)
+      .send({
+        email: enrolledPortalEmail,
+        password: enrolledPortalPassword,
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.user.role).toBe(RoleType.STUDENT);
+    expect(response.body.user.email).toBe(enrolledPortalEmail);
+  });
+
   it('POST /admissions creates admission for rollback validation', async () => {
     const response = await request(app.getHttpServer())
       .post(`${apiPrefix}/admissions`)
@@ -1820,22 +1935,26 @@ describe('School ERP API (e2e)', () => {
   });
 
   it('POST /students creates an attendance student', async () => {
+    studentPortalEmail = `attendance.portal.${Date.now()}@school.com`;
+
     const response = await request(app.getHttpServer())
       .post(`${apiPrefix}/students`)
       .set('Authorization', `Bearer ${schoolAdminToken}`)
       .send({
         name: `Attendance Student ${Date.now()}`,
-        email: `attendance.${Date.now()}@school.com`,
+        email: studentPortalEmail,
         phone: '9000000100',
         gender: 'MALE',
         dateOfBirth: '2011-03-12',
         classId: createdClassId,
         sectionId: createdSectionId,
         sessionId: currentSessionId,
+        portalPassword: '12345678',
       });
 
     expect(response.status).toBe(201);
     attendanceStudentId = response.body.data.id as string;
+    studentPortalUserId = response.body.data.portalAccess.userId as string;
   });
 
   it('POST /students creates a second attendance student', async () => {
@@ -2618,6 +2737,18 @@ describe('School ERP API (e2e)', () => {
     expect(linkedChild.attendanceSummary.totalDays).toBeGreaterThan(0);
   });
 
+  it('GET /parent/branding returns school branding for parent portal', async () => {
+    const response = await request(app.getHttpServer())
+      .get(`${apiPrefix}/parent/branding`)
+      .set('Authorization', `Bearer ${parentToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.schoolId).toBe(defaultSchoolId);
+    expect(response.body.data.schoolName).toBe('Demo School Updated');
+    expect(response.body.data.logoUrl).toBeTruthy();
+  });
+
   it('GET /parent/dashboard rejects non-parent users', async () => {
     const response = await request(app.getHttpServer())
       .get(`${apiPrefix}/parent/dashboard`)
@@ -2832,46 +2963,6 @@ describe('School ERP API (e2e)', () => {
   });
 
   it('POST /auth/login logs in as student portal user', async () => {
-    studentPortalEmail = `student.portal.${Date.now()}@school.com`;
-
-    const studentRole = await prisma.role.findFirstOrThrow({
-      where: {
-        roleCode: 'STUDENT',
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    const passwordHash = await bcrypt.hash('12345678', 10);
-
-    const portalUser = await prisma.user.create({
-      data: {
-        schoolId: defaultSchoolId,
-        roleId: studentRole.id,
-        fullName: 'Portal Student',
-        email: studentPortalEmail,
-        passwordHash,
-        userType: UserType.ADMIN,
-        designation: 'Student',
-        isActive: true,
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    studentPortalUserId = portalUser.id;
-
-    await prisma.student.update({
-      where: {
-        id: attendanceStudentId,
-      },
-      data: {
-        userId: studentPortalUserId,
-      },
-    });
-
     const response = await request(app.getHttpServer())
       .post(`${apiPrefix}/auth/login`)
       .send({
@@ -2895,6 +2986,18 @@ describe('School ERP API (e2e)', () => {
     expect(response.body.data.student.id).toBe(attendanceStudentId);
     expect(response.body.data.feeSummary.overall.totalAssigned).toBeGreaterThan(0);
     expect(response.body.data.attendanceSummary.overall.totalDays).toBeGreaterThan(0);
+  });
+
+  it('GET /student/branding returns school branding for student portal', async () => {
+    const response = await request(app.getHttpServer())
+      .get(`${apiPrefix}/student/branding`)
+      .set('Authorization', `Bearer ${studentPortalToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.schoolId).toBe(defaultSchoolId);
+    expect(response.body.data.schoolName).toBe('Demo School Updated');
+    expect(response.body.data.logoUrl).toBeTruthy();
   });
 
   it('GET /student/attendance returns student attendance detail', async () => {

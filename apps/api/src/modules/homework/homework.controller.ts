@@ -36,6 +36,12 @@ export class HomeworkController {
     return this.homeworkService.findAll(currentUser, query);
   }
 
+  @Get('portal')
+  @Roles(RoleType.STUDENT, RoleType.PARENT)
+  findPortal(@CurrentUser() currentUser: JwtUser) {
+    return this.homeworkService.findPortal(currentUser);
+  }
+
   @Get('options')
   @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
   @Permissions('homework.read')

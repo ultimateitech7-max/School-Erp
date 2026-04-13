@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import { Banner } from '@/components/ui/banner';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
+import { HolidayYearCalendar } from '@/components/ui/holiday-year-calendar';
+import { PortalNoticeGrid } from '@/components/portal/portal-shared-pages';
 import { Spinner } from '@/components/ui/spinner';
 import {
   apiFetch,
@@ -127,8 +129,8 @@ export default function ParentPortalPage() {
                 <Link className="text-link" href={`/parent/fees?studentId=${child.id}`}>
                   Fees
                 </Link>
-                <Link className="text-link" href={`/parent/results?studentId=${child.id}`}>
-                  Results
+                <Link className="text-link" href={`/parent/exams?studentId=${child.id}`}>
+                  Exams
                 </Link>
               </div>
             </article>
@@ -152,22 +154,15 @@ export default function ParentPortalPage() {
         </div>
 
         {payload.holidays.length ? (
-          <div className="portal-notice-list">
-            {payload.holidays.map((item) => (
-              <article className="subtle-card portal-notice-card" key={item.id}>
-                <div className="portal-notice-head">
-                  <strong>{item.title}</strong>
-                  <Badge tone={item.type === 'HOLIDAY' ? 'success' : 'info'}>
-                    {item.type}
-                  </Badge>
-                </div>
-                <p className="muted-text">
-                  {new Date(item.startDate).toLocaleDateString('en-IN')} to{' '}
-                  {new Date(item.endDate).toLocaleDateString('en-IN')}
-                </p>
-              </article>
-            ))}
-          </div>
+          <HolidayYearCalendar
+            className="holiday-year-shell-compact"
+            description="Marked holiday calendar with a compact family-facing list."
+            emptyDescription="Calendar updates published by the school will appear here."
+            emptyTitle="No upcoming holidays"
+            items={payload.holidays}
+            title="Holiday Calendar"
+            showHeading={false}
+          />
         ) : (
           <EmptyState
             title="No upcoming holidays"
@@ -186,24 +181,11 @@ export default function ParentPortalPage() {
           </div>
         </div>
 
-        {payload.notices.length ? (
-          <div className="portal-notice-list">
-            {payload.notices.map((notice) => (
-              <article className="subtle-card portal-notice-card" key={notice.id}>
-                <div className="portal-notice-head">
-                  <strong>{notice.title}</strong>
-                  <Badge tone="info">{notice.audienceType}</Badge>
-                </div>
-                <p className="muted-text">{notice.description}</p>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <EmptyState
-            title="No active notices"
-            description="Published parent notices will appear here."
-          />
-        )}
+        <PortalNoticeGrid
+          emptyDescription="Published parent notices will appear here."
+          emptyTitle="No active notices"
+          items={payload.notices}
+        />
       </section>
     </div>
   );

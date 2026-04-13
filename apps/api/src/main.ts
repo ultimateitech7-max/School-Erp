@@ -1,6 +1,9 @@
+import { mkdirSync } from 'fs';
 import { LogLevel, Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import express from 'express';
+import { join } from 'path';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
 
@@ -26,6 +29,9 @@ async function bootstrap() {
   );
   const trustProxy = parseTrustProxy(configService.get<string>('TRUST_PROXY'));
   const httpAdapter = app.getHttpAdapter().getInstance();
+  const uploadsRoot = join(process.cwd(), 'uploads');
+
+  mkdirSync(uploadsRoot, { recursive: true });
 
   if (typeof httpAdapter.disable === 'function') {
     httpAdapter.disable('x-powered-by');
@@ -33,6 +39,15 @@ async function bootstrap() {
 
   if (trustProxy !== false && typeof httpAdapter.set === 'function') {
     httpAdapter.set('trust proxy', trustProxy);
+  }
+
+  if (typeof httpAdapter.use === 'function') {
+    httpAdapter.use(
+      '/uploads',
+      express.static(uploadsRoot, {
+        maxAge: isProduction ? '7d' : 0,
+      }),
+    );
   }
 
   app.setGlobalPrefix(apiPrefix);

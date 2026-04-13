@@ -11,6 +11,7 @@ import { AcademicSessionForm } from './components/AcademicSessionForm';
 import { AcademicSessionTable } from './components/AcademicSessionTable';
 import { Banner } from '@/components/ui/banner';
 import { Badge } from '@/components/ui/badge';
+import { CsvDownloadButton } from '@/components/ui/csv-download-button';
 import { useSchoolScope } from '@/hooks/use-school-scope';
 import { getStoredAuthSession } from '@/utils/auth-storage';
 import {
@@ -22,6 +23,8 @@ import {
   type ApiMeta,
   type ApiSuccessResponse,
 } from '@/utils/api';
+import { academicSessionCsvColumns } from '@/utils/csv-exporters';
+import { buildCsvFilename, exportPaginatedApiCsv } from '@/utils/csv';
 
 const initialMeta: ApiMeta = {
   page: 1,
@@ -218,6 +221,37 @@ export default function AcademicSessionsPage() {
     setPage(1);
   };
 
+  const handleExportCsv = async () => {
+    try {
+      const count = await exportPaginatedApiCsv<AcademicSessionRecord>({
+        path: '/academic-sessions',
+        params: {
+          search: deferredSearch || undefined,
+          status: statusFilter || undefined,
+          isCurrent:
+            currentFilter === 'all'
+              ? undefined
+              : currentFilter === 'current',
+        },
+        columns: academicSessionCsvColumns,
+        filename: buildCsvFilename('academic-sessions'),
+      });
+
+      setMessage({
+        type: 'success',
+        text: `Downloaded ${count} academic session record${count === 1 ? '' : 's'} as CSV.`,
+      });
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text:
+          error instanceof Error
+            ? error.message
+            : 'Failed to export academic sessions.',
+      });
+    }
+  };
+
   return (
     <div className="students-page">
       <section className="summary-cards-grid">
@@ -297,6 +331,11 @@ export default function AcademicSessionsPage() {
               New Session
             </button>
           ) : null}
+          <CsvDownloadButton
+            label="Download CSV"
+            loadingLabel="Exporting..."
+            onDownload={handleExportCsv}
+          />
         </div>
       </section>
 

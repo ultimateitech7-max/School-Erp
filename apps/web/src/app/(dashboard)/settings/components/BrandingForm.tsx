@@ -5,23 +5,28 @@ import type {
   SchoolBrandingFormPayload,
   SchoolBrandingRecord,
 } from '@/utils/api';
+import { resolveAssetUrl } from '@/utils/api';
 
 interface BrandingFormProps {
   initialValue: SchoolBrandingRecord;
   isSubmitting: boolean;
   onSubmit: (payload: SchoolBrandingFormPayload) => Promise<void>;
+  onUploadLogo: (file: File) => Promise<SchoolBrandingRecord>;
 }
 
 export function BrandingForm({
   initialValue,
   isSubmitting,
   onSubmit,
+  onUploadLogo,
 }: BrandingFormProps) {
   const [logoUrl, setLogoUrl] = useState('');
   const [primaryColor, setPrimaryColor] = useState('');
   const [secondaryColor, setSecondaryColor] = useState('');
   const [website, setWebsite] = useState('');
   const [supportEmail, setSupportEmail] = useState('');
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setLogoUrl(initialValue.logoUrl ?? '');
@@ -43,6 +48,34 @@ export function BrandingForm({
     });
   };
 
+  const handleLogoFileChange = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    setUploadMessage(null);
+
+    try {
+      const updatedBranding = await onUploadLogo(file);
+      setLogoUrl(updatedBranding.logoUrl ?? '');
+      setUploadMessage('Logo uploaded successfully.');
+    } catch (error) {
+      setUploadMessage(
+        error instanceof Error ? error.message : 'Failed to upload logo.',
+      );
+    } finally {
+      setIsUploadingLogo(false);
+      event.target.value = '';
+    }
+  };
+
+  const previewLogoUrl = resolveAssetUrl(logoUrl);
+
   return (
     <section className="card panel academic-form-panel">
       <div className="panel-heading">
@@ -58,11 +91,50 @@ export function BrandingForm({
         <label>
           <span>Logo URL</span>
           <input
-            type="url"
+            placeholder="https://example.com/logo.png or uploaded asset path"
+            type="text"
             value={logoUrl}
             onChange={(event) => setLogoUrl(event.target.value)}
           />
         </label>
+
+        <label>
+          <span>Upload Logo</span>
+          <input
+            accept="image/png,image/jpeg,image/webp,image/svg+xml"
+            disabled={isSubmitting || isUploadingLogo}
+            onChange={handleLogoFileChange}
+            type="file"
+          />
+        </label>
+
+        {previewLogoUrl ? (
+          <div className="subtle-card portal-notice-card">
+            <div className="portal-notice-head">
+              <strong>Logo Preview</strong>
+              <span className="muted-text">
+                {isUploadingLogo ? 'Uploading...' : 'Ready'}
+              </span>
+            </div>
+            <img
+              alt="School logo preview"
+              className="school-brand-logo"
+              src={previewLogoUrl}
+              style={{
+                width: '4rem',
+                height: '4rem',
+                borderRadius: '0.75rem',
+                objectFit: 'cover',
+              }}
+            />
+          </div>
+        ) : null}
+
+        {uploadMessage ? (
+          <p className={uploadMessage.includes('successfully') ? 'success-text' : 'error-text'}>
+            {uploadMessage}
+          </p>
+        ) : null}
 
         <label>
           <span>Primary Color</span>

@@ -1,11 +1,14 @@
 'use client';
 
-import { startTransition, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useState } from 'react';
 import { AssignFeeForm } from './components/AssignFeeForm';
 import { FeeStructureForm } from './components/FeeStructureForm';
+import { FeeStructureTable } from './components/FeeStructureTable';
 import { FeesTable } from './components/FeesTable';
-import { PaymentForm } from './components/PaymentForm';
-import { PaymentHistory } from './components/PaymentHistory';
+import { Badge } from '@/components/ui/badge';
+import { Banner } from '@/components/ui/banner';
+import { CsvDownloadButton } from '@/components/ui/csv-download-button';
+import { Field, Input, Select } from '@/components/ui/field';
 import {
   apiFetch,
   createQueryString,
@@ -16,11 +19,11 @@ import {
   type FeeStructureFormPayload,
   type FeeStructureRecord,
   type FeesOptionsPayload,
-  type PaymentRecord,
-  type RecordPaymentPayload,
   type StudentFeeRecord,
 } from '@/utils/api';
 import { getStoredAuthSession, type AuthSession } from '@/utils/auth-storage';
+import { studentFeeCsvColumns } from '@/utils/csv-exporters';
+import { buildCsvFilename, exportPaginatedApiCsv } from '@/utils/csv';
 
 const initialMeta: ApiMeta = {
   page: 1,
@@ -45,28 +48,27 @@ export default function FeesPage() {
   const [options, setOptions] = useState<FeesOptionsPayload>(emptyOptions);
   const [feeStructures, setFeeStructures] = useState<FeeStructureRecord[]>([]);
   const [studentFees, setStudentFees] = useState<StudentFeeRecord[]>([]);
-  const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [structureMeta, setStructureMeta] = useState<ApiMeta>(initialMeta);
   const [studentFeesMeta, setStudentFeesMeta] = useState<ApiMeta>(initialMeta);
-  const [paymentsMeta, setPaymentsMeta] = useState<ApiMeta>(initialMeta);
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [loadingStructures, setLoadingStructures] = useState(true);
   const [loadingStudentFees, setLoadingStudentFees] = useState(true);
-  const [loadingPayments, setLoadingPayments] = useState(true);
   const [structureSubmitting, setStructureSubmitting] = useState(false);
   const [assignSubmitting, setAssignSubmitting] = useState(false);
-  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const [deletingStructureId, setDeletingStructureId] = useState<string | null>(null);
+  const [editingStructure, setEditingStructure] = useState<FeeStructureRecord | null>(null);
   const [message, setMessage] = useState<{
     type: 'success' | 'error';
     text: string;
   } | null>(null);
-  const [searchInput, setSearchInput] = useState('');
-  const deferredSearch = useDeferredValue(searchInput);
+  const [structureSearchInput, setStructureSearchInput] = useState('');
+  const [assignmentSearchInput, setAssignmentSearchInput] = useState('');
+  const deferredStructureSearch = useDeferredValue(structureSearchInput);
+  const deferredAssignmentSearch = useDeferredValue(assignmentSearchInput);
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [statusFilter, setStatusFilter] = useState<FeeAssignmentStatus | ''>('');
   const [structurePage, setStructurePage] = useState(1);
   const [studentFeePage, setStudentFeePage] = useState(1);
-  const [paymentPage, setPaymentPage] = useState(1);
   const [reloadIndex, setReloadIndex] = useState(0);
 
   useEffect(() => {
@@ -75,12 +77,12 @@ export default function FeesPage() {
   }, []);
 
   useEffect(() => {
-    startTransition(() => {
-      setStructurePage(1);
-      setStudentFeePage(1);
-      setPaymentPage(1);
-    });
-  }, [deferredSearch, selectedStudentId, statusFilter]);
+    setStructurePage(1);
+  }, [deferredStructureSearch]);
+
+  useEffect(() => {
+    setStudentFeePage(1);
+  }, [deferredAssignmentSearch, selectedStudentId, statusFilter]);
 
   useEffect(() => {
     if (!session) {
@@ -116,7 +118,7 @@ export default function FeesPage() {
       `/fees/structure${createQueryString({
         page: structurePage,
         limit: initialMeta.limit,
-        search: deferredSearch,
+        search: deferredStructureSearch || undefined,
       })}`,
     )
       .then((response) => {
@@ -135,7 +137,7 @@ export default function FeesPage() {
       .finally(() => {
         setLoadingStructures(false);
       });
-  }, [deferredSearch, reloadIndex, session, structurePage]);
+  }, [deferredStructureSearch, reloadIndex, session, structurePage]);
 
   useEffect(() => {
     if (!session || !selectedStudentId) {
@@ -151,7 +153,7 @@ export default function FeesPage() {
       `/fees/student/${selectedStudentId}${createQueryString({
         page: studentFeePage,
         limit: initialMeta.limit,
-        search: deferredSearch,
+        search: deferredAssignmentSearch || undefined,
         status: statusFilter || undefined,
       })}`,
     )
@@ -171,60 +173,38 @@ export default function FeesPage() {
       .finally(() => {
         setLoadingStudentFees(false);
       });
-  }, [deferredSearch, reloadIndex, selectedStudentId, session, statusFilter, studentFeePage]);
+  }, [
+    deferredAssignmentSearch,
+    reloadIndex,
+    selectedStudentId,
+    session,
+    statusFilter,
+    studentFeePage,
+  ]);
 
-  useEffect(() => {
-    if (!session) {
-      return;
-    }
-
-    setLoadingPayments(true);
-
-    void apiFetch<ApiSuccessResponse<PaymentRecord[]>>(
-      `/fees/payments${createQueryString({
-        page: paymentPage,
-        limit: initialMeta.limit,
-        search: deferredSearch,
-        studentId: selectedStudentId || undefined,
-      })}`,
-    )
-      .then((response) => {
-        setPayments(response.data);
-        setPaymentsMeta(response.meta ?? initialMeta);
-      })
-      .catch((error) => {
-        setPayments([]);
-        setPaymentsMeta(initialMeta);
-        setMessage({
-          type: 'error',
-          text:
-            error instanceof Error ? error.message : 'Failed to load payments.',
-        });
-      })
-      .finally(() => {
-        setLoadingPayments(false);
-      });
-  }, [deferredSearch, paymentPage, reloadIndex, selectedStudentId, session]);
-
-  const paymentCandidates = useMemo(
-    () => studentFees.filter((item) => item.dueAmount > 0),
-    [studentFees],
-  );
-
-  const handleCreateStructure = async (payload: FeeStructureFormPayload) => {
+  const handleCreateOrUpdateStructure = async (payload: FeeStructureFormPayload) => {
     setStructureSubmitting(true);
     setMessage(null);
 
     try {
-      await apiFetch<ApiSuccessResponse<FeeStructureRecord>>('/fees/structure', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
+      const response = editingStructure
+        ? await apiFetch<ApiSuccessResponse<FeeStructureRecord>>(
+            `/fees/structure/${editingStructure.id}`,
+            {
+              method: 'PATCH',
+              body: JSON.stringify(payload),
+            },
+          )
+        : await apiFetch<ApiSuccessResponse<FeeStructureRecord>>('/fees/structure', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          });
 
       setMessage({
         type: 'success',
-        text: 'Fee structure created successfully.',
+        text: response.message,
       });
+      setEditingStructure(null);
       setReloadIndex((current) => current + 1);
     } catch (error) {
       setMessage({
@@ -232,10 +212,43 @@ export default function FeesPage() {
         text:
           error instanceof Error
             ? error.message
-            : 'Failed to create fee structure.',
+            : editingStructure
+              ? 'Failed to update fee structure.'
+              : 'Failed to create fee structure.',
       });
     } finally {
       setStructureSubmitting(false);
+    }
+  };
+
+  const handleDeleteStructure = async (structure: FeeStructureRecord) => {
+    setDeletingStructureId(structure.id);
+    setMessage(null);
+
+    try {
+      const response = await apiFetch<ApiSuccessResponse<{ id: string; deleted: boolean }>>(
+        `/fees/structure/${structure.id}`,
+        {
+          method: 'DELETE',
+        },
+      );
+
+      setMessage({
+        type: 'success',
+        text: response.message,
+      });
+      if (editingStructure?.id === structure.id) {
+        setEditingStructure(null);
+      }
+      setReloadIndex((current) => current + 1);
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text:
+          error instanceof Error ? error.message : 'Failed to delete fee structure.',
+      });
+    } finally {
+      setDeletingStructureId(null);
     }
   };
 
@@ -244,16 +257,20 @@ export default function FeesPage() {
     setMessage(null);
 
     try {
-      await apiFetch<ApiSuccessResponse<StudentFeeRecord>>('/fees/assign', {
+      const response = await apiFetch<ApiSuccessResponse<StudentFeeRecord>>('/fees/assign', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
 
       setMessage({
         type: 'success',
-        text: 'Fee assigned successfully.',
+        text: response.message,
       });
-      setSelectedStudentId(payload.studentId);
+
+      if (payload.studentId) {
+        setSelectedStudentId(payload.studentId);
+      }
+
       setReloadIndex((current) => current + 1);
     } catch (error) {
       setMessage({
@@ -265,29 +282,36 @@ export default function FeesPage() {
     }
   };
 
-  const handleRecordPayment = async (payload: RecordPaymentPayload) => {
-    setPaymentSubmitting(true);
-    setMessage(null);
+  const handleExportStudentFeesCsv = async () => {
+    if (!selectedStudentId) {
+      setMessage({
+        type: 'error',
+        text: 'Select a student before exporting fee assignments.',
+      });
+      return;
+    }
 
     try {
-      await apiFetch<ApiSuccessResponse<PaymentRecord>>('/fees/payment', {
-        method: 'POST',
-        body: JSON.stringify(payload),
+      const count = await exportPaginatedApiCsv<StudentFeeRecord>({
+        path: `/fees/student/${selectedStudentId}`,
+        params: {
+          search: deferredAssignmentSearch || undefined,
+          status: statusFilter || undefined,
+        },
+        columns: studentFeeCsvColumns,
+        filename: buildCsvFilename('student-fees'),
       });
 
       setMessage({
         type: 'success',
-        text: 'Payment recorded successfully.',
+        text: `Downloaded ${count} fee assignment${count === 1 ? '' : 's'} as CSV.`,
       });
-      setReloadIndex((current) => current + 1);
     } catch (error) {
       setMessage({
         type: 'error',
         text:
-          error instanceof Error ? error.message : 'Failed to record payment.',
+          error instanceof Error ? error.message : 'Failed to export student fees.',
       });
-    } finally {
-      setPaymentSubmitting(false);
     }
   };
 
@@ -325,91 +349,114 @@ export default function FeesPage() {
   }
 
   return (
-    <div className="academic-page">
-      <section className="card panel academic-toolbar">
-        <div>
-          <h2>Fees Management</h2>
-          <p className="muted-text">
-            Create structures, assign fees, record payments, and track dues.
-          </p>
+    <div className="academic-page fee-management-shell">
+      {message ? <Banner tone={message.type}>{message.text}</Banner> : null}
+
+      <section className="card panel compact-panel-stack fee-management-hero">
+        <div className="panel-heading compact-panel-heading fee-management-head">
+          <div>
+            <h2>Fees Management</h2>
+            <p className="muted-text">
+              Create fee structures, assign them with proper class or section scope, and review student dues.
+            </p>
+          </div>
+
+          <div className="chip-list">
+            <Badge tone="info">Collection moved to Fee Submissions</Badge>
+          </div>
         </div>
 
-        <div className="toolbar-actions">
-          <input
-            className="search-input"
-            placeholder="Search by fee, receipt, or student"
-            type="search"
-            value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
-          />
-          <select
-            value={selectedStudentId}
-            onChange={(event) => setSelectedStudentId(event.target.value)}
-          >
-            <option value="">All students</option>
-            {options.students.map((student) => (
-              <option key={student.id} value={student.id}>
-                {student.name} ({student.studentCode})
-              </option>
-            ))}
-          </select>
-          <select
-            value={statusFilter}
-            onChange={(event) =>
-              setStatusFilter(event.target.value as FeeAssignmentStatus | '')
-            }
-          >
-            <option value="">All statuses</option>
-            {options.assignmentStatuses.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
+        <div className="fee-management-toolbar">
+          <Field className="fee-management-toolbar-search" label="Structure Search">
+            <Input
+              placeholder="Search fee structure by name or code"
+              type="search"
+              value={structureSearchInput}
+              onChange={(event) => setStructureSearchInput(event.target.value)}
+            />
+          </Field>
+
+          <Field label="Student Fees Search">
+            <Input
+              placeholder="Search assigned fee by fee name or code"
+              type="search"
+              value={assignmentSearchInput}
+              onChange={(event) => setAssignmentSearchInput(event.target.value)}
+            />
+          </Field>
+
+          <Field label="Student">
+            <Select
+              value={selectedStudentId}
+              onChange={(event) => setSelectedStudentId(event.target.value)}
+            >
+              <option value="">Select student</option>
+              {options.students.map((student) => (
+                <option key={student.id} value={student.id}>
+                  {student.name} ({student.studentCode})
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label="Status">
+            <Select
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(event.target.value as FeeAssignmentStatus | '')
+              }
+            >
+              <option value="">All statuses</option>
+              {options.assignmentStatuses.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </Select>
+          </Field>
         </div>
       </section>
 
-      {message ? (
-        <section
-          className={`card panel banner banner-${message.type}`}
-          role="status"
-        >
-          {message.text}
-        </section>
-      ) : null}
-
-      <div className="academic-grid fees-grid">
+      <div className="academic-grid fees-grid fees-grid-split fee-management-forms">
         <FeeStructureForm
+          initialValue={editingStructure}
+          onCancel={() => setEditingStructure(null)}
+          onSubmit={handleCreateOrUpdateStructure}
           options={options}
           submitting={structureSubmitting || loadingOptions}
-          onSubmit={handleCreateStructure}
         />
         <AssignFeeForm
-          options={options}
           feeStructures={feeStructures}
-          submitting={assignSubmitting || loadingStructures || loadingOptions}
           onSubmit={handleAssignFee}
-        />
-        <PaymentForm
           options={options}
-          studentFees={paymentCandidates}
-          submitting={paymentSubmitting || loadingStudentFees || loadingOptions}
-          onSubmit={handleRecordPayment}
+          submitting={assignSubmitting || loadingStructures || loadingOptions}
         />
       </div>
 
       <div className="fees-results-grid">
         <FeesTable
+          actions={
+            <CsvDownloadButton
+              label="Download CSV"
+              loadingLabel="Exporting..."
+              onDownload={handleExportStudentFeesCsv}
+            />
+          }
           fees={studentFees}
           loading={loadingStudentFees}
           meta={studentFeesMeta}
           onPageChange={setStudentFeePage}
         />
-        <PaymentHistory
-          payments={payments}
-          loading={loadingPayments}
-          meta={paymentsMeta}
-          onPageChange={setPaymentPage}
+
+        <FeeStructureTable
+          deletingId={deletingStructureId}
+          editingId={editingStructure?.id ?? null}
+          items={feeStructures}
+          loading={loadingStructures}
+          meta={structureMeta}
+          onDelete={(item) => void handleDeleteStructure(item)}
+          onEdit={setEditingStructure}
+          onPageChange={setStructurePage}
         />
       </div>
     </div>

@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import type { AdmissionApplicationStatus } from '@/utils/api';
 
 interface AdmissionFiltersProps {
@@ -10,6 +11,7 @@ interface AdmissionFiltersProps {
   onSearchChange: (value: string) => void;
   onStatusChange: (value: AdmissionApplicationStatus | '') => void;
   onReset: () => void;
+  actions?: ReactNode;
 }
 
 export function AdmissionFilters({
@@ -20,6 +22,7 @@ export function AdmissionFilters({
   onSearchChange,
   onStatusChange,
   onReset,
+  actions,
 }: AdmissionFiltersProps) {
   return (
     <section className="card panel students-toolbar">
@@ -61,6 +64,7 @@ export function AdmissionFilters({
             Reset
           </button>
         ) : null}
+        {actions}
       </div>
     </section>
   );

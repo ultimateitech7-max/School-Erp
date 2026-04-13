@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import { Banner } from '@/components/ui/banner';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
+import { HolidayYearCalendar } from '@/components/ui/holiday-year-calendar';
+import { PortalNoticeGrid } from '@/components/portal/portal-shared-pages';
 import { Spinner } from '@/components/ui/spinner';
 import {
   apiFetch,
@@ -104,13 +106,13 @@ export default function StudentPortalPage() {
           </Link>
         </article>
         <article className="subtle-card">
-          <span className="eyebrow">Results</span>
+          <span className="eyebrow">Exams</span>
           <strong>{payload.resultSummary.overall.averagePercentage}%</strong>
           <span className="muted-text">
             {payload.resultSummary.overall.examCount} exams recorded
           </span>
-          <Link className="text-link" href="/student/results">
-            View results
+          <Link className="text-link" href="/student/exams">
+            View exams
           </Link>
         </article>
       </div>
@@ -135,10 +137,10 @@ export default function StudentPortalPage() {
                     Due {new Date(item.dueDate).toLocaleDateString('en-IN')}
                   </Badge>
                 </div>
-                <p className="muted-text">
+                <p className="muted-text portal-card-meta">
                   {item.subject.name} • {item.teacher.name}
                 </p>
-                <p className="muted-text">{item.description}</p>
+                <p className="muted-text portal-card-copy">{item.description}</p>
               </article>
             ))}
           </div>
@@ -161,22 +163,15 @@ export default function StudentPortalPage() {
         </div>
 
         {payload.holidays.length ? (
-          <div className="portal-notice-list">
-            {payload.holidays.map((item) => (
-              <article className="subtle-card portal-notice-card" key={item.id}>
-                <div className="portal-notice-head">
-                  <strong>{item.title}</strong>
-                  <Badge tone={item.type === 'HOLIDAY' ? 'success' : 'info'}>
-                    {item.type}
-                  </Badge>
-                </div>
-                <p className="muted-text">
-                  {new Date(item.startDate).toLocaleDateString('en-IN')} to{' '}
-                  {new Date(item.endDate).toLocaleDateString('en-IN')}
-                </p>
-              </article>
-            ))}
-          </div>
+          <HolidayYearCalendar
+            className="holiday-year-shell-compact"
+            description="Full-year holiday calendar with a tight right-side list."
+            emptyDescription="Published holiday calendar items will appear here."
+            emptyTitle="No upcoming holidays"
+            items={payload.holidays}
+            title="Holiday Calendar"
+            showHeading={false}
+          />
         ) : (
           <EmptyState
             title="No upcoming holidays"
@@ -195,24 +190,11 @@ export default function StudentPortalPage() {
           </div>
         </div>
 
-        {payload.notices.length ? (
-          <div className="portal-notice-list">
-            {payload.notices.map((notice) => (
-              <article className="subtle-card portal-notice-card" key={notice.id}>
-                <div className="portal-notice-head">
-                  <strong>{notice.title}</strong>
-                  <Badge tone="info">{notice.audienceType}</Badge>
-                </div>
-                <p className="muted-text">{notice.description}</p>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <EmptyState
-            title="No active notices"
-            description="Published student notices will appear here."
-          />
-        )}
+        <PortalNoticeGrid
+          emptyDescription="Published student notices will appear here."
+          emptyTitle="No active notices"
+          items={payload.notices}
+        />
       </section>
     </div>
   );

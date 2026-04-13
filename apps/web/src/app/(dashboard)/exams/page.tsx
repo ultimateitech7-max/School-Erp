@@ -11,6 +11,7 @@ import { ExamForm } from './components/ExamForm';
 import { ExamTable } from './components/ExamTable';
 import { MarksEntryForm } from './components/MarksEntryForm';
 import { ResultsTable } from './components/ResultsTable';
+import { CsvDownloadButton } from '@/components/ui/csv-download-button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   apiFetch,
@@ -18,6 +19,7 @@ import {
   type ApiMeta,
   type ApiSuccessResponse,
   type ExamFormPayload,
+  type ExamMarkRecord,
   type ExamRecord,
   type ExamResultsPayload,
   type ExamsOptionsPayload,
@@ -27,6 +29,8 @@ import {
   type StudentResultsPayload,
 } from '@/utils/api';
 import { getStoredAuthSession, type AuthSession } from '@/utils/auth-storage';
+import { examCsvColumns, examResultCsvColumns } from '@/utils/csv-exporters';
+import { buildCsvFilename, exportPaginatedApiCsv, exportRowsToCsv } from '@/utils/csv';
 
 const initialMeta: ApiMeta = {
   page: 1,
@@ -60,6 +64,7 @@ export default function ExamsPage() {
   const [selectedExam, setSelectedExam] = useState<ExamRecord | null>(null);
   const [pendingDeleteExam, setPendingDeleteExam] = useState<ExamRecord | null>(null);
   const [selectedStudentId, setSelectedStudentId] = useState('');
+  const [examMarks, setExamMarks] = useState<ExamMarkRecord[]>([]);
   const [examResults, setExamResults] = useState<ExamResultsPayload | null>(null);
   const [studentResults, setStudentResults] = useState<StudentResultsPayload | null>(null);
   const [message, setMessage] = useState<{
@@ -142,19 +147,25 @@ export default function ExamsPage() {
   useEffect(() => {
     if (!selectedExam) {
       setExamResults(null);
+      setExamMarks([]);
       return;
     }
 
     setLoadingExamResults(true);
 
-    void apiFetch<ApiSuccessResponse<ExamResultsPayload>>(
-      `/exams/${selectedExam.id}/results`,
-    )
-      .then((response) => {
-        setExamResults(response.data);
+    void Promise.all([
+      apiFetch<ApiSuccessResponse<ExamResultsPayload>>(`/exams/${selectedExam.id}/results`),
+      apiFetch<ApiSuccessResponse<{ exam: ExamRecord; marks: ExamMarkRecord[] }>>(
+        `/exams/${selectedExam.id}/marks`,
+      ),
+    ])
+      .then(([resultsResponse, marksResponse]) => {
+        setExamResults(resultsResponse.data);
+        setExamMarks(marksResponse.data.marks);
       })
       .catch((error) => {
         setExamResults(null);
+        setExamMarks([]);
         setMessage({
           type: 'error',
           text:
@@ -199,6 +210,8 @@ export default function ExamsPage() {
     session?.user.role === 'SUPER_ADMIN' ||
     session?.user.role === 'SCHOOL_ADMIN' ||
     session?.user.role === 'TEACHER';
+  const canConfigureExams =
+    session?.user.role === 'SUPER_ADMIN' || session?.user.role === 'SCHOOL_ADMIN';
 
   const filteredStudents = useMemo(() => {
     if (!selectedExam?.class?.id) {
@@ -314,9 +327,49 @@ export default function ExamsPage() {
         type: 'error',
         text: error instanceof Error ? error.message : 'Failed to save marks.',
       });
+      throw error;
     } finally {
       setSubmittingMarks(false);
     }
+  };
+
+  const handleExportExamsCsv = async () => {
+    try {
+      const count = await exportPaginatedApiCsv<ExamRecord>({
+        path: '/exams',
+        params: {
+          search: deferredSearch || undefined,
+          status: statusFilter || undefined,
+          examType: typeFilter || undefined,
+        },
+        columns: examCsvColumns,
+        filename: buildCsvFilename('exams'),
+      });
+
+      setMessage({
+        type: 'success',
+        text: `Downloaded ${count} exam record${count === 1 ? '' : 's'} as CSV.`,
+      });
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Failed to export exams.',
+      });
+    }
+  };
+
+  const handleExportResultsCsv = async () => {
+    const resultRows = studentResults?.results ?? examResults?.results ?? [];
+    const count = exportRowsToCsv(
+      resultRows,
+      examResultCsvColumns,
+      buildCsvFilename(studentResults ? 'student-results' : 'exam-results'),
+    );
+
+    setMessage({
+      type: 'success',
+      text: `Downloaded ${count} result row${count === 1 ? '' : 's'} as CSV.`,
+    });
   };
 
   if (!session) {
@@ -376,7 +429,7 @@ export default function ExamsPage() {
               </option>
             ))}
           </select>
-          {editingExam ? (
+          {editingExam && canConfigureExams ? (
             <button
               className="secondary-button"
               onClick={() => setEditingExam(null)}
@@ -385,6 +438,11 @@ export default function ExamsPage() {
               Clear Edit
             </button>
           ) : null}
+          <CsvDownloadButton
+            label="Download CSV"
+            loadingLabel="Exporting..."
+            onDownload={handleExportExamsCsv}
+          />
         </div>
       </section>
 
@@ -396,16 +454,29 @@ export default function ExamsPage() {
         </section>
       ) : null}
 
-      <div className="academic-grid">
-        <ExamForm
-          initialValue={editingExam}
-          isSubmitting={submittingExam}
-          onCancel={() => setEditingExam(null)}
-          onSubmit={handleSubmitExam}
-          options={options}
-        />
-
+      <div className={canConfigureExams ? 'academic-grid' : 'dashboard-stack'}>
+        {canConfigureExams ? (
+          <ExamForm
+            initialValue={editingExam}
+            isSubmitting={submittingExam}
+            onCancel={() => setEditingExam(null)}
+            onSubmit={handleSubmitExam}
+            options={options}
+          />
+        ) : (
+          <section className="card panel">
+            <div className="panel-heading">
+              <div>
+                <h2>Exam Workspace</h2>
+                <p className="muted-text">
+                  Review exam schedules, open result workflows, and complete marks entry.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
         <ExamTable
+          canManage={canConfigureExams}
           deletingExamId={deletingExamId}
           exams={exams}
           loading={loadingOptions || loadingExams}
@@ -421,6 +492,7 @@ export default function ExamsPage() {
       <div className="academic-grid">
         <MarksEntryForm
           exam={selectedExam}
+          existingMarks={examMarks}
           isSubmitting={submittingMarks}
           onSubmit={handleSubmitMarks}
           options={options}
@@ -454,25 +526,34 @@ export default function ExamsPage() {
       </div>
 
       <ResultsTable
+        actions={
+          <CsvDownloadButton
+            label="Download CSV"
+            loadingLabel="Exporting..."
+            onDownload={handleExportResultsCsv}
+          />
+        }
         examResults={examResults}
         loadingExamResults={loadingExamResults}
         loadingStudentResults={loadingStudentResults}
         studentResults={studentResults}
       />
 
-      <ConfirmDialog
-        confirmLabel="Delete exam"
-        description={
-          pendingDeleteExam
-            ? `Delete ${pendingDeleteExam.examName}? This will remove the exam from active planning and result views.`
-            : 'Delete this exam?'
-        }
-        loading={Boolean(pendingDeleteExam && deletingExamId === pendingDeleteExam.id)}
-        open={Boolean(pendingDeleteExam)}
-        onClose={() => setPendingDeleteExam(null)}
-        onConfirm={() => void confirmDeleteExam()}
-        title="Delete exam"
-      />
+      {canConfigureExams ? (
+        <ConfirmDialog
+          confirmLabel="Delete exam"
+          description={
+            pendingDeleteExam
+              ? `Delete ${pendingDeleteExam.examName}? This will remove the exam from active planning and result views.`
+              : 'Delete this exam?'
+          }
+          loading={Boolean(pendingDeleteExam && deletingExamId === pendingDeleteExam.id)}
+          open={Boolean(pendingDeleteExam)}
+          onClose={() => setPendingDeleteExam(null)}
+          onConfirm={() => void confirmDeleteExam()}
+          title="Delete exam"
+        />
+      ) : null}
     </div>
   );
 }
