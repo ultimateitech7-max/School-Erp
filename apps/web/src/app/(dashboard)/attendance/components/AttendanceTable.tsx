@@ -13,8 +13,8 @@ interface AttendanceTableProps {
   loading: boolean;
   deletingId: string | null;
   meta: ApiMeta;
-  onEdit: (record: AttendanceRecord) => void;
-  onDelete: (record: AttendanceRecord) => void;
+  onEdit?: (record: AttendanceRecord) => void;
+  onDelete?: (record: AttendanceRecord) => void;
   onPageChange: (page: number) => void;
 }
 
@@ -27,6 +27,8 @@ export function AttendanceTable({
   onDelete,
   onPageChange,
 }: AttendanceTableProps) {
+  const canManage = Boolean(onEdit && onDelete);
+
   return (
     <section className="card panel">
       <div className="panel-heading">
@@ -59,7 +61,7 @@ export function AttendanceTable({
                   <TableHeadCell>Section</TableHeadCell>
                   <TableHeadCell>Status</TableHeadCell>
                   <TableHeadCell>Marked By</TableHeadCell>
-                  <TableHeadCell>Actions</TableHeadCell>
+                  {canManage ? <TableHeadCell>Actions</TableHeadCell> : null}
                 </tr>
               </thead>
               <tbody>
@@ -87,25 +89,27 @@ export function AttendanceTable({
                       </Badge>
                     </TableCell>
                     <TableCell>{record.markedBy?.name ?? '-'}</TableCell>
-                    <TableCell>
-                      <div className="table-actions">
-                        <Button
-                          onClick={() => onEdit(record)}
-                          type="button"
-                          variant="secondary"
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          disabled={deletingId === record.id}
-                          onClick={() => onDelete(record)}
-                          type="button"
-                          variant="danger"
-                        >
-                          {deletingId === record.id ? 'Deleting...' : 'Delete'}
-                        </Button>
-                      </div>
-                    </TableCell>
+                    {canManage ? (
+                      <TableCell>
+                        <div className="table-actions">
+                          <Button
+                            onClick={() => onEdit?.(record)}
+                            type="button"
+                            variant="secondary"
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            disabled={deletingId === record.id}
+                            onClick={() => onDelete?.(record)}
+                            type="button"
+                            variant="danger"
+                          >
+                            {deletingId === record.id ? 'Deleting...' : 'Delete'}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>

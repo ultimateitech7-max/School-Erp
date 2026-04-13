@@ -29,6 +29,23 @@ export function storeAuthSession(session: AuthSession) {
   }
 }
 
+export function updateStoredSessionPermissions(permissions: string[]) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const currentSession = getStoredAuthSession();
+
+  if (!currentSession) {
+    return;
+  }
+
+  storeAuthSession({
+    ...currentSession,
+    permissions,
+  });
+}
+
 export function getStoredAuthSession(): AuthSession | null {
   if (typeof window === 'undefined') {
     return null;

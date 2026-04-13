@@ -1540,6 +1540,10 @@ export class FeesService {
           template.termsAndConditions ??
           'Fees once paid are subject to the school fee policy and may not be refundable.',
         signatureLabel: template.signatureLabel ?? 'Authorized Signatory',
+        signatureImageUrl:
+          typeof template.signatureImageUrl === 'string'
+            ? template.signatureImageUrl
+            : null,
         showLogo: template.showLogo ?? true,
         showSignature: template.showSignature ?? true,
         customFields: Array.isArray(template.customFields)

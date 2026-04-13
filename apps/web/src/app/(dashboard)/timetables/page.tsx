@@ -99,8 +99,8 @@ export default function TimetablesPage() {
     () => sections.find((item) => item.id === sectionId) ?? null,
     [sectionId, sections],
   );
-  const canManageTimetable =
-    session?.user.role === 'SUPER_ADMIN' || session?.user.role === 'SCHOOL_ADMIN';
+  const canReadTimetable = Boolean(session?.permissions.includes('academics.read'));
+  const canManageTimetable = Boolean(session?.permissions.includes('academics.manage'));
 
   const handleCreate = async (payload: TimetableFormPayload) => {
     setSubmitting(true);
@@ -213,6 +213,17 @@ export default function TimetablesPage() {
       text: `Downloaded ${count} timetable entr${count === 1 ? 'y' : 'ies'} as CSV.`,
     });
   };
+
+  if (!canReadTimetable) {
+    return (
+      <section className="card panel">
+        <h2>Timetable Access Restricted</h2>
+        <p className="muted-text">
+          You do not have permission to access timetables.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <div className="dashboard-stack">

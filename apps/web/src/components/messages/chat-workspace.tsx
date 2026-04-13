@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Banner } from '@/components/ui/banner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -36,6 +36,30 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
+function formatChatTime(value: string) {
+  return new Intl.DateTimeFormat('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
+function getParticipantSubtitle(participant: MessageRecipientRecord) {
+  return participant.roleType
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function getInitials(name: string) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
 function buildParticipantFromMessage(
   item: MessageRecord,
   currentUserId: string,
@@ -56,16 +80,21 @@ export function MessageChatWorkspace({
   title,
   description,
 }: MessageChatWorkspaceProps) {
+  const messageListRef = useRef<HTMLDivElement | null>(null);
   const [inbox, setInbox] = useState<MessageRecord[]>([]);
   const [sent, setSent] = useState<MessageRecord[]>([]);
   const [recipients, setRecipients] = useState<MessageRecipientRecord[]>([]);
   const [roleFilter, setRoleFilter] = useState('');
+  const [newChatRecipientId, setNewChatRecipientId] = useState('');
   const [selectedThreadUserId, setSelectedThreadUserId] = useState('');
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [deletingThread, setDeletingThread] = useState(false);
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+  const [isNewChatOpen, setIsNewChatOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileView, setMobileView] = useState<'threads' | 'chat' | 'new'>('threads');
   const [message, setMessage] = useState<{
     type: 'success' | 'error';
     text: string;
@@ -104,6 +133,32 @@ export function MessageChatWorkspace({
 
   useEffect(() => {
     void loadWorkspace();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia('(max-width: 980px)');
+    const syncViewport = () => {
+      const nextIsMobile = mediaQuery.matches;
+      setIsMobile(nextIsMobile);
+      setMobileView((current) => {
+        if (!nextIsMobile) {
+          return 'threads';
+        }
+
+        return current;
+      });
+    };
+
+    syncViewport();
+    mediaQuery.addEventListener('change', syncViewport);
+
+    return () => {
+      mediaQuery.removeEventListener('change', syncViewport);
+    };
   }, []);
 
   const allMessages = useMemo(() => {
@@ -179,8 +234,13 @@ export function MessageChatWorkspace({
       return;
     }
 
+    if (isMobile) {
+      setSelectedThreadUserId('');
+      return;
+    }
+
     setSelectedThreadUserId(threads[0]?.participant.id ?? '');
-  }, [recipients, selectedThreadUserId, threads]);
+  }, [isMobile, recipients, selectedThreadUserId, threads]);
 
   const selectedThread = useMemo(
     () => threads.find((thread) => thread.participant.id === selectedThreadUserId) ?? null,
@@ -238,9 +298,38 @@ export function MessageChatWorkspace({
     };
   }, [currentUserId, selectedThread]);
 
-  const handleStartChat = (recipientId: string) => {
+  useEffect(() => {
+    const messageList = messageListRef.current;
+
+    if (!messageList) {
+      return;
+    }
+
+    messageList.scrollTop = messageList.scrollHeight;
+  }, [selectedThreadUserId, selectedThread?.messages.length]);
+
+  const openThread = (recipientId: string) => {
     setSelectedThreadUserId(recipientId);
     setMessage(null);
+    setIsNewChatOpen(false);
+    setNewChatRecipientId('');
+    setRoleFilter('');
+
+    if (isMobile) {
+      setMobileView('chat');
+    }
+  };
+
+  const handleStartNewChat = () => {
+    if (!newChatRecipientId) {
+      setMessage({
+        type: 'error',
+        text: 'Select a person to start a new chat.',
+      });
+      return;
+    }
+
+    openThread(newChatRecipientId);
   };
 
   const handleSendMessage = async (event: FormEvent<HTMLFormElement>) => {
@@ -269,10 +358,6 @@ export function MessageChatWorkspace({
       setSent((current) => [...current, response.data]);
       setDraft('');
       setSelectedThreadUserId(selectedRecipient.id);
-      setMessage({
-        type: 'success',
-        text: response.message,
-      });
     } catch (error) {
       setMessage({
         type: 'error',
@@ -344,6 +429,11 @@ export function MessageChatWorkspace({
         ),
       );
       setSelectedThreadUserId('');
+
+      if (isMobile) {
+        setMobileView('threads');
+      }
+
       setMessage({
         type: 'success',
         text: response.message,
@@ -363,6 +453,11 @@ export function MessageChatWorkspace({
     [threads],
   );
 
+  const isNewChatVisible = isNewChatOpen || mobileView === 'new';
+  const shouldShowSidebar =
+    !isMobile || mobileView === 'threads' || mobileView === 'new';
+  const shouldShowChatPanel = !isMobile || mobileView === 'chat';
+
   if (loading) {
     return (
       <section className="card panel">
@@ -372,8 +467,8 @@ export function MessageChatWorkspace({
   }
 
   return (
-    <section className="card panel">
-      <div className="panel-heading">
+    <section className="card panel compact-panel-stack">
+      <div className="message-chat-toolbar">
         <div>
           <h2>{title}</h2>
           <p className="muted-text">{description}</p>
@@ -389,162 +484,247 @@ export function MessageChatWorkspace({
       {message ? <Banner tone={message.type}>{message.text}</Banner> : null}
 
       <div className="message-chat-layout">
-        <aside className="message-chat-sidebar">
-          <div className="message-chat-start card">
-            <Field label="Role">
-              <Select
-                value={roleFilter}
-                onChange={(event) => setRoleFilter(event.target.value)}
-              >
-                <option value="">All roles</option>
-                {recipientRoleOptions.map(([role, label]) => (
-                  <option key={role} value={role}>
-                    {label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-
-            <Field label="Start Chat">
-              <Select
-                value={
-                  filteredRecipients.some((item) => item.id === selectedThreadUserId)
-                    ? selectedThreadUserId
-                    : ''
-                }
-                onChange={(event) => handleStartChat(event.target.value)}
-              >
-                <option value="">Select person</option>
-                {filteredRecipients.map((recipient) => (
-                  <option key={recipient.id} value={recipient.id}>
-                    {recipient.name} ({recipient.roleType.replaceAll('_', ' ')})
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
-
-          <div className="message-chat-thread-list">
-            {threads.length ? (
-              threads.map((thread) => (
-                <button
-                  className={`message-chat-thread${thread.participant.id === selectedThreadUserId ? ' message-chat-thread-active' : ''}`}
-                  key={thread.participant.id}
-                  onClick={() => setSelectedThreadUserId(thread.participant.id)}
-                  type="button"
-                >
-                  <div className="message-chat-thread-top">
-                    <strong>{thread.participant.name}</strong>
-                    <span>{formatDateTime(thread.updatedAt)}</span>
-                  </div>
-                  <p className="muted-text">
-                    {thread.participant.roleType.replaceAll('_', ' ')}
-                  </p>
-                  <div className="message-chat-thread-bottom">
-                    <span className="message-chat-thread-preview">
-                      {thread.messages.at(-1)?.message ?? 'Start chatting'}
-                    </span>
-                    {thread.unreadCount ? (
-                      <Badge tone="info">{thread.unreadCount}</Badge>
-                    ) : null}
-                  </div>
-                </button>
-              ))
-            ) : (
-              <EmptyState
-                title="No chats yet"
-                description="Start a conversation by selecting a role and person."
-              />
-            )}
-          </div>
-        </aside>
-
-        <div className="message-chat-panel">
-          {selectedRecipient ? (
-            <>
-              <div className="message-chat-header">
-                <div>
-                  <h3>{selectedRecipient.name}</h3>
-                  <p className="muted-text">
-                    {selectedRecipient.roleType.replaceAll('_', ' ')}
-                    {selectedRecipient.email ? ` • ${selectedRecipient.email}` : ''}
-                  </p>
-                </div>
-                {selectedThread?.messages.length ? (
-                  <Button
-                    disabled={deletingThread}
-                    onClick={() => void handleDeleteThread()}
-                    size="sm"
-                    type="button"
-                    variant="ghost"
-                  >
-                    {deletingThread ? 'Deleting...' : 'Delete chat'}
-                  </Button>
-                ) : null}
+        {shouldShowSidebar ? (
+          <aside className="message-chat-sidebar">
+            <div className="message-chat-sidebar-head">
+              <div>
+                <h3>Recent Chats</h3>
+                <p className="muted-text">Only recent conversations stay here.</p>
               </div>
+              <Button
+                className="message-chat-sidebar-toggle"
+                onClick={() => {
+                  if (isNewChatVisible) {
+                    setIsNewChatOpen(false);
+                    setMobileView('threads');
+                    return;
+                  }
 
-              <div className="message-chat-messages">
-                {selectedThread?.messages.length ? (
-                  selectedThread.messages.map((item) => {
-                    const sentByCurrentUser = item.sender.id === currentUserId;
+                  setIsNewChatOpen(true);
+                  setMobileView('new');
+                  setMessage(null);
+                }}
+                size="sm"
+                type="button"
+                variant={isNewChatVisible ? 'ghost' : 'secondary'}
+              >
+                {isNewChatVisible ? 'X' : 'New Chat'}
+              </Button>
+            </div>
 
-                    return (
-                      <article
-                        className={`message-bubble${sentByCurrentUser ? ' message-bubble-outgoing' : ' message-bubble-incoming'}`}
-                        key={item.id}
-                      >
-                        <div className="message-bubble-meta">
-                          <strong>{sentByCurrentUser ? 'You' : item.sender.name}</strong>
-                          <span>{formatDateTime(item.createdAt)}</span>
+            {isNewChatVisible ? (
+              <div className="message-chat-new-card">
+                <div className="message-chat-new-head">
+                  <strong>Start New Chat</strong>
+                  {isMobile ? (
+                    <button
+                      className="message-chat-back"
+                      onClick={() => {
+                        setIsNewChatOpen(false);
+                        setMobileView('threads');
+                      }}
+                      type="button"
+                    >
+                      Back
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="message-chat-new-form">
+                  <Field label="Role">
+                    <Select
+                      value={roleFilter}
+                      onChange={(event) => {
+                        setRoleFilter(event.target.value);
+                        setNewChatRecipientId('');
+                      }}
+                    >
+                      <option value="">All roles</option>
+                      {recipientRoleOptions.map(([role, label]) => (
+                        <option key={role} value={role}>
+                          {label}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+
+                  <Field label="Person">
+                    <Select
+                      value={newChatRecipientId}
+                      onChange={(event) => setNewChatRecipientId(event.target.value)}
+                    >
+                      <option value="">Select person</option>
+                      {filteredRecipients.map((recipient) => (
+                        <option key={recipient.id} value={recipient.id}>
+                          {recipient.name} ({recipient.roleType.replaceAll('_', ' ')})
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+
+                <div className="form-actions">
+                  <Button onClick={handleStartNewChat} size="sm" type="button">
+                    Open Chat
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {(!isMobile || mobileView !== 'new') ? (
+              <div className="message-chat-thread-list">
+                {threads.length ? (
+                  threads.map((thread) => (
+                    <button
+                      className={`message-chat-thread${thread.participant.id === selectedThreadUserId ? ' message-chat-thread-active' : ''}`}
+                      key={thread.participant.id}
+                      onClick={() => openThread(thread.participant.id)}
+                      type="button"
+                    >
+                      <div className="message-chat-thread-avatar">
+                        {getInitials(thread.participant.name)}
+                      </div>
+                      <div className="message-chat-thread-copy">
+                        <div className="message-chat-thread-top">
+                          <strong>{thread.participant.name}</strong>
+                          <span>{formatDateTime(thread.updatedAt)}</span>
                         </div>
-                        <p>{item.message}</p>
-                        <div className="message-bubble-actions">
-                          {!sentByCurrentUser && !item.isRead ? (
-                            <Badge tone="warning">Unread</Badge>
-                          ) : null}
-                          <Button
-                            disabled={deletingMessageId === item.id}
-                            onClick={() => void handleDeleteMessage(item.id)}
-                            size="sm"
-                            type="button"
-                            variant="ghost"
-                          >
-                            {deletingMessageId === item.id ? 'Deleting...' : 'Delete'}
-                          </Button>
+                        <div className="message-chat-thread-bottom">
+                          <span className="message-chat-thread-role">
+                            {getParticipantSubtitle(thread.participant)}
+                          </span>
+                          <span className="message-chat-thread-preview">
+                            {thread.messages.at(-1)?.message ?? 'Start chatting'}
+                          </span>
                         </div>
-                      </article>
-                    );
-                  })
+                      </div>
+                      {thread.unreadCount ? (
+                        <span className="message-chat-thread-unread">
+                          {thread.unreadCount}
+                        </span>
+                      ) : null}
+                    </button>
+                  ))
                 ) : (
                   <EmptyState
-                    title="No messages yet"
-                    description="Write the first message to start this chat."
+                    title="No chats yet"
+                    description="Click new chat and choose a person to start."
                   />
                 )}
               </div>
+            ) : null}
+          </aside>
+        ) : null}
 
-              <form className="message-chat-composer" onSubmit={handleSendMessage}>
-                <Textarea
-                  placeholder={`Write a message to ${selectedRecipient.name}...`}
-                  rows={3}
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                />
-                <div className="form-actions">
-                  <span />
-                  <Button disabled={sending} type="submit">
-                    {sending ? 'Sending...' : 'Send'}
-                  </Button>
+        {shouldShowChatPanel ? (
+          <div className="message-chat-panel">
+            {selectedRecipient ? (
+              <>
+                <div className="message-chat-header">
+                  <div className="message-chat-header-main">
+                    {isMobile ? (
+                      <button
+                        className="message-chat-back"
+                        onClick={() => setMobileView('threads')}
+                        type="button"
+                      >
+                        Back
+                      </button>
+                    ) : null}
+                    <div className="message-chat-header-avatar">
+                      {getInitials(selectedRecipient.name)}
+                    </div>
+                    <div className="message-chat-header-copy">
+                      <h3>{selectedRecipient.name}</h3>
+                      <p className="muted-text">
+                        {getParticipantSubtitle(selectedRecipient)}
+                        {selectedRecipient.email ? ` • ${selectedRecipient.email}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  {selectedThread?.messages.length ? (
+                    <Button
+                      disabled={deletingThread}
+                      onClick={() => void handleDeleteThread()}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      {deletingThread ? 'Deleting...' : 'Delete chat'}
+                    </Button>
+                  ) : null}
                 </div>
-              </form>
-            </>
-          ) : (
-            <EmptyState
-              title="Select a chat"
-              description="Choose an existing thread or start a new chat from the left side."
-            />
-          )}
-        </div>
+
+                <div className="message-chat-messages" ref={messageListRef}>
+                  {selectedThread?.messages.length ? (
+                    selectedThread.messages.map((item) => {
+                      const sentByCurrentUser = item.sender.id === currentUserId;
+                      const deliveryLabel = item.isRead ? 'Read' : 'Sent';
+
+                      return (
+                        <article
+                          className={`message-bubble${sentByCurrentUser ? ' message-bubble-outgoing' : ' message-bubble-incoming'}`}
+                          key={item.id}
+                        >
+                          <p className="message-bubble-copy">{item.message}</p>
+                          <div className="message-bubble-actions">
+                            <div className="message-bubble-meta">
+                              <span>{formatChatTime(item.createdAt)}</span>
+                              {sentByCurrentUser ? (
+                                <span
+                                  aria-label={deliveryLabel}
+                                  className={`message-bubble-ticks${item.isRead ? ' message-bubble-ticks-read' : ''}`}
+                                  title={deliveryLabel}
+                                >
+                                  {item.isRead ? '✓✓' : '✓'}
+                                </span>
+                              ) : null}
+                            </div>
+                            <Button
+                              className="message-bubble-delete"
+                              disabled={deletingMessageId === item.id}
+                              onClick={() => void handleDeleteMessage(item.id)}
+                              size="sm"
+                              type="button"
+                              variant="ghost"
+                            >
+                              {deletingMessageId === item.id ? 'Deleting...' : 'Delete'}
+                            </Button>
+                          </div>
+                        </article>
+                      );
+                    })
+                  ) : (
+                    <EmptyState
+                      title="No messages yet"
+                      description="Write the first message to start this chat."
+                    />
+                  )}
+                </div>
+
+                <form className="message-chat-composer" onSubmit={handleSendMessage}>
+                  <Textarea
+                    className="message-chat-composer-input"
+                    placeholder={`Write a message to ${selectedRecipient.name}...`}
+                    rows={2}
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                  />
+                  <div className="form-actions">
+                    <Button disabled={sending} type="submit">
+                      {sending ? 'Sending...' : 'Send'}
+                    </Button>
+                  </div>
+                </form>
+              </>
+            ) : (
+              <EmptyState
+                title="Select a chat"
+                description="Open a recent conversation or click new chat."
+              />
+            )}
+          </div>
+        ) : null}
       </div>
     </section>
   );

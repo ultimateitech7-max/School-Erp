@@ -130,6 +130,8 @@ const MODULE_CATALOG: Array<{
 
 const BRANDING_UPLOAD_ROOT = join(process.cwd(), 'uploads', 'branding');
 const BRANDING_PUBLIC_PREFIX = '/uploads/branding';
+const RECEIPT_SIGNATURE_UPLOAD_ROOT = join(process.cwd(), 'uploads', 'receipt-signatures');
+const RECEIPT_SIGNATURE_PUBLIC_PREFIX = '/uploads/receipt-signatures';
 const ALLOWED_BRANDING_LOGO_TYPES = new Set([
   'image/jpeg',
   'image/png',
@@ -245,6 +247,13 @@ export class SettingsService {
             ...(dto.signatureLabel !== undefined
               ? { signatureLabel: dto.signatureLabel }
               : {}),
+            ...(dto.signatureImageUrl !== undefined
+              ? {
+                  signatureImageUrl: this.normalizeReceiptSignatureUrl(
+                    dto.signatureImageUrl,
+                  ),
+                }
+              : {}),
             ...(dto.showLogo !== undefined ? { showLogo: dto.showLogo } : {}),
             ...(dto.showSignature !== undefined
               ? { showSignature: dto.showSignature }
@@ -331,7 +340,7 @@ export class SettingsService {
     const currentBranding = this.getBrandingSettings(settingsJson);
     const previousLogoUrl =
       typeof currentBranding.logoUrl === 'string' ? currentBranding.logoUrl : null;
-    const extension = this.resolveBrandingLogoExtension(
+    const extension = this.resolveManagedImageExtension(
       file.originalname,
       file.mimetype,
     );
@@ -362,6 +371,75 @@ export class SettingsService {
         success: true,
         message: 'Branding logo uploaded successfully.',
         data: this.serializeBranding(updatedSchool),
+      };
+    } catch (error) {
+      await unlink(storagePath).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async uploadReceiptTemplateSignature(
+    currentUser: JwtUser,
+    file: BrandingLogoUploadFile | undefined,
+    schoolIdOverride?: string | null,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Please choose a signature image file to upload.');
+    }
+
+    if (!ALLOWED_BRANDING_LOGO_TYPES.has(file.mimetype)) {
+      throw new BadRequestException(
+        'Only JPG, PNG, WebP, or SVG signature files are allowed.',
+      );
+    }
+
+    if (!file.size || file.size > MAX_BRANDING_LOGO_BYTES) {
+      throw new BadRequestException('Signature file size must be 5 MB or less.');
+    }
+
+    const school = await this.findSchoolOrThrow(currentUser, schoolIdOverride);
+    const settingsJson = this.getSettingsJson(school.settingsJson);
+    const currentTemplate = this.getFeeReceiptTemplateSettings(settingsJson);
+    const previousSignatureUrl =
+      typeof currentTemplate.signatureImageUrl === 'string'
+        ? currentTemplate.signatureImageUrl
+        : null;
+    const extension = this.resolveManagedImageExtension(
+      file.originalname,
+      file.mimetype,
+    );
+    const filename = `receipt-signature-${school.id}-${Date.now()}-${randomUUID()}.${extension}`;
+    const storagePath = join(RECEIPT_SIGNATURE_UPLOAD_ROOT, filename);
+    const publicSignatureUrl = `${RECEIPT_SIGNATURE_PUBLIC_PREFIX}/${filename}`;
+
+    await mkdir(RECEIPT_SIGNATURE_UPLOAD_ROOT, { recursive: true });
+    await writeFile(storagePath, file.buffer);
+
+    try {
+      const updatedSchool = await this.prisma.school.update({
+        where: { id: school.id },
+        data: {
+          settingsJson: {
+            ...settingsJson,
+            feeReceiptTemplate: {
+              ...currentTemplate,
+              signatureImageUrl: publicSignatureUrl,
+            },
+          } as Prisma.InputJsonValue,
+        },
+      });
+
+      await this.deleteManagedAsset(
+        previousSignatureUrl,
+        publicSignatureUrl,
+        RECEIPT_SIGNATURE_PUBLIC_PREFIX,
+        RECEIPT_SIGNATURE_UPLOAD_ROOT,
+      );
+
+      return {
+        success: true,
+        message: 'Receipt signature uploaded successfully.',
+        data: this.serializeFeeReceiptTemplate(updatedSchool),
       };
     } catch (error) {
       await unlink(storagePath).catch(() => undefined);
@@ -630,6 +708,10 @@ export class SettingsService {
         template.termsAndConditions ??
         'Fees once paid are subject to the school fee policy and may not be refundable.',
       signatureLabel: template.signatureLabel ?? 'Authorized Signatory',
+      signatureImageUrl:
+        typeof template.signatureImageUrl === 'string'
+          ? template.signatureImageUrl
+          : null,
       showLogo: template.showLogo ?? true,
       showSignature: template.showSignature ?? true,
       customFields: Array.isArray(template.customFields)
@@ -718,7 +800,31 @@ export class SettingsService {
     );
   }
 
-  private resolveBrandingLogoExtension(originalname: string, mimetype: string) {
+  private normalizeReceiptSignatureUrl(value: string | null | undefined) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    const normalized = String(value).trim();
+
+    if (!normalized) {
+      return null;
+    }
+
+    if (/^https?:\/\/.+/i.test(normalized)) {
+      return normalized;
+    }
+
+    if (normalized.startsWith(`${RECEIPT_SIGNATURE_PUBLIC_PREFIX}/`)) {
+      return normalized;
+    }
+
+    throw new BadRequestException(
+      'Signature image URL must be a valid http/https URL or an uploaded receipt signature asset path.',
+    );
+  }
+
+  private resolveManagedImageExtension(originalname: string, mimetype: string) {
     const extension = extname(originalname).replace('.', '').trim().toLowerCase();
 
     if (extension) {
@@ -741,7 +847,7 @@ export class SettingsService {
       case 'image/svg+xml':
         return 'svg';
       default:
-        throw new BadRequestException('Unsupported logo file format.');
+        throw new BadRequestException('Unsupported image file format.');
     }
   }
 
@@ -749,21 +855,35 @@ export class SettingsService {
     previousLogoUrl: string | null,
     currentLogoUrl: string | null,
   ) {
+    await this.deleteManagedAsset(
+      previousLogoUrl,
+      currentLogoUrl,
+      BRANDING_PUBLIC_PREFIX,
+      BRANDING_UPLOAD_ROOT,
+    );
+  }
+
+  private async deleteManagedAsset(
+    previousAssetUrl: string | null,
+    currentAssetUrl: string | null,
+    publicPrefix: string,
+    uploadRoot: string,
+  ) {
     if (
-      !previousLogoUrl ||
-      previousLogoUrl === currentLogoUrl ||
-      !previousLogoUrl.startsWith(`${BRANDING_PUBLIC_PREFIX}/`)
+      !previousAssetUrl ||
+      previousAssetUrl === currentAssetUrl ||
+      !previousAssetUrl.startsWith(`${publicPrefix}/`)
     ) {
       return;
     }
 
-    const filename = basename(previousLogoUrl);
+    const filename = basename(previousAssetUrl);
 
     if (!filename) {
       return;
     }
 
-    const previousFilePath = join(BRANDING_UPLOAD_ROOT, filename);
+    const previousFilePath = join(uploadRoot, filename);
     await unlink(previousFilePath).catch(() => undefined);
   }
 

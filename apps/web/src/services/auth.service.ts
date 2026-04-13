@@ -17,6 +17,11 @@ export interface LoginResponse {
   user: UserRecord;
 }
 
+export interface ProfileResponse {
+  user: UserRecord;
+  permissions: string[];
+}
+
 export const authService = {
   async login(payload: LoginPayload): Promise<LoginResponse> {
     return apiFetch<LoginResponse>('/auth/login', {
@@ -28,5 +33,9 @@ export const authService = {
 
   async logout(): Promise<void> {
     clearAuthSession();
+  },
+
+  async getProfile(): Promise<ProfileResponse> {
+    return apiFetch<ProfileResponse>('/auth/profile');
   },
 };

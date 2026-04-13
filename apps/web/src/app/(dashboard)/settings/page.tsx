@@ -235,6 +235,46 @@ export default function SettingsPage() {
     }
   };
 
+  const handleUploadReceiptSignature = async (file: File) => {
+    setSavingReceiptTemplate(true);
+    setMessage(null);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await apiFetch<ApiSuccessResponse<FeeReceiptTemplateRecord>>(
+        '/settings/receipt-template/signature',
+        {
+          method: 'POST',
+          body: formData,
+        },
+      );
+
+      setReceiptTemplate(response.data);
+      setMessage({
+        type: 'success',
+        text: response.message,
+      });
+
+      return response.data;
+    } catch (error) {
+      const text =
+        error instanceof Error
+          ? error.message
+          : 'Failed to upload receipt signature.';
+
+      setMessage({
+        type: 'error',
+        text,
+      });
+
+      throw error;
+    } finally {
+      setSavingReceiptTemplate(false);
+    }
+  };
+
   const canManageSettings =
     session?.user.role === 'SUPER_ADMIN' ||
     session?.user.role === 'SCHOOL_ADMIN';
@@ -294,6 +334,7 @@ export default function SettingsPage() {
         initialValue={receiptTemplate}
         isSubmitting={savingReceiptTemplate}
         onSubmit={handleSaveReceiptTemplate}
+        onUploadSignature={handleUploadReceiptSignature}
         schoolSettings={schoolSettings}
       />
 

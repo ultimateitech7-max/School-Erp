@@ -566,22 +566,20 @@ export default function PromotionsPage() {
 
   return (
     <div className="students-page">
-      <section className="summary-cards-grid">
-        <article className="card summary-card">
-          <div className="summary-card-top">
-            <Badge tone="info">Current Promotion Context</Badge>
-            <span className="summary-card-trend">
-              {loadingOptions ? 'Syncing' : currentSession ? 'Live' : 'Unset'}
-            </span>
-          </div>
-          <p>Promotions preserve historical enrollments and create the next session record.</p>
-          <strong>{currentSession?.name ?? 'No current academic session'}</strong>
-          <span>
-            {currentSession
-              ? `${formatDisplayDate(currentSession.startDate)} to ${formatDisplayDate(currentSession.endDate)}`
-              : 'Select source and target sessions to start a promotion cycle.'}
-          </span>
-        </article>
+      <section className="card panel promotion-context-strip">
+        <Badge tone="info">Current Promotion Context</Badge>
+        <strong>{currentSession?.name ?? 'No current academic session'}</strong>
+        <span className="muted-text promotion-context-copy">
+          Promotions preserve historical enrollments and create the next session record.
+        </span>
+        <span className="promotion-context-dates">
+          {currentSession
+            ? `${formatDisplayDate(currentSession.startDate)} to ${formatDisplayDate(currentSession.endDate)}`
+            : 'Select source and target sessions to start a promotion cycle.'}
+        </span>
+        <span className="summary-card-trend">
+          {loadingOptions ? 'Syncing' : currentSession ? 'Live' : 'Unset'}
+        </span>
       </section>
 
       <PromotionFilters

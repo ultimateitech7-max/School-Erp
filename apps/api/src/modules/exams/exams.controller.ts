@@ -30,21 +30,21 @@ export class ExamsController {
   constructor(private readonly examsService: ExamsService) {}
 
   @Post('exams')
-  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN)
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.STAFF)
   @Permissions('exams.manage')
   createExam(@CurrentUser() currentUser: JwtUser, @Body() dto: CreateExamDto) {
     return this.examsService.createExam(currentUser, dto);
   }
 
   @Get('exams')
-  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER, RoleType.STAFF)
   @Permissions('exams.read')
   findExams(@CurrentUser() currentUser: JwtUser, @Query() query: ExamQueryDto) {
     return this.examsService.findExams(currentUser, query);
   }
 
   @Get('exams/options')
-  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER, RoleType.STAFF)
   @Permissions('exams.read')
   findOptions(
     @CurrentUser() currentUser: JwtUser,
@@ -54,7 +54,7 @@ export class ExamsController {
   }
 
   @Get('exams/:id')
-  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER, RoleType.STAFF)
   @Permissions('exams.read')
   findExam(
     @CurrentUser() currentUser: JwtUser,
@@ -65,7 +65,7 @@ export class ExamsController {
   }
 
   @Patch('exams/:id')
-  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN)
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.STAFF)
   @Permissions('exams.manage')
   updateExam(
     @CurrentUser() currentUser: JwtUser,
@@ -76,7 +76,7 @@ export class ExamsController {
   }
 
   @Delete('exams/:id')
-  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN)
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.STAFF)
   @Permissions('exams.manage')
   deleteExam(
     @CurrentUser() currentUser: JwtUser,
@@ -87,7 +87,7 @@ export class ExamsController {
   }
 
   @Post('exams/:id/marks')
-  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER, RoleType.STAFF)
   @Permissions('exams.manage')
   createMarks(
     @CurrentUser() currentUser: JwtUser,
@@ -98,7 +98,7 @@ export class ExamsController {
   }
 
   @Patch('exams/:examId/marks/:markId')
-  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER, RoleType.STAFF)
   @Permissions('exams.manage')
   updateMark(
     @CurrentUser() currentUser: JwtUser,
@@ -110,7 +110,7 @@ export class ExamsController {
   }
 
   @Get('exams/:id/results')
-  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER, RoleType.STAFF)
   @Permissions('exams.read')
   findExamResults(
     @CurrentUser() currentUser: JwtUser,
@@ -121,7 +121,7 @@ export class ExamsController {
   }
 
   @Get('exams/:id/marks')
-  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER, RoleType.STAFF)
   @Permissions('exams.read')
   findExamMarks(
     @CurrentUser() currentUser: JwtUser,
@@ -132,7 +132,7 @@ export class ExamsController {
   }
 
   @Get('students/:id/results')
-  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER, RoleType.STAFF)
   @Permissions('exams.read')
   findStudentResults(
     @CurrentUser() currentUser: JwtUser,

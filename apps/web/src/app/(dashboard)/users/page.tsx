@@ -3,6 +3,7 @@
 import { startTransition, useDeferredValue, useEffect, useState } from 'react';
 import { UserFilters } from './components/UserFilters';
 import { UserForm } from './components/UserForm';
+import { UserPermissionManager } from './components/UserPermissionManager';
 import { UserTable } from './components/UserTable';
 import { CsvDownloadButton } from '@/components/ui/csv-download-button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -13,8 +14,10 @@ import {
   type ApiSuccessResponse,
   type UserFormPayload,
   type UserOptionsPayload,
+  type UserPermissionRecord,
   type UserRecord,
   type UserRole,
+  type UserPermissionsFormPayload,
   type UserStatus,
 } from '@/utils/api';
 import { getStoredAuthSession, type AuthSession } from '@/utils/auth-storage';
@@ -48,6 +51,9 @@ export default function UsersPage() {
     null,
   );
   const [editingUser, setEditingUser] = useState<UserRecord | null>(null);
+  const [permissionState, setPermissionState] = useState<UserPermissionRecord | null>(null);
+  const [loadingPermissions, setLoadingPermissions] = useState(false);
+  const [savingPermissions, setSavingPermissions] = useState(false);
   const [pendingDeleteUser, setPendingDeleteUser] = useState<UserRecord | null>(null);
   const [message, setMessage] = useState<{
     type: 'success' | 'error';
@@ -129,6 +135,36 @@ export default function UsersPage() {
         setLoadingUsers(false);
       });
   }, [deferredSearch, page, reloadIndex, roleFilter, session, statusFilter]);
+
+  useEffect(() => {
+    if (!editingUser || (editingUser.role !== 'TEACHER' && editingUser.role !== 'STAFF')) {
+      setPermissionState(null);
+      setLoadingPermissions(false);
+      return;
+    }
+
+    setLoadingPermissions(true);
+
+    void apiFetch<ApiSuccessResponse<UserPermissionRecord>>(
+      `/users/${editingUser.id}/permissions`,
+    )
+      .then((response) => {
+        setPermissionState(response.data);
+      })
+      .catch((error) => {
+        setPermissionState(null);
+        setMessage({
+          type: 'error',
+          text:
+            error instanceof Error
+              ? error.message
+              : 'Failed to load staff permissions.',
+        });
+      })
+      .finally(() => {
+        setLoadingPermissions(false);
+      });
+  }, [editingUser]);
 
   const handleSubmit = async (payload: UserFormPayload) => {
     setSubmitting(true);
@@ -268,6 +304,41 @@ export default function UsersPage() {
     }
   };
 
+  const handleSavePermissions = async (payload: UserPermissionsFormPayload) => {
+    if (!editingUser) {
+      return;
+    }
+
+    setSavingPermissions(true);
+    setMessage(null);
+
+    try {
+      const response = await apiFetch<ApiSuccessResponse<UserPermissionRecord>>(
+        `/users/${editingUser.id}/permissions`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+        },
+      );
+
+      setPermissionState(response.data);
+      setMessage({
+        type: 'success',
+        text: 'Staff permissions updated successfully.',
+      });
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text:
+          error instanceof Error
+            ? error.message
+            : 'Failed to update staff permissions.',
+      });
+    } finally {
+      setSavingPermissions(false);
+    }
+  };
+
   if (!sessionLoaded) {
     return (
       <section className="card panel">
@@ -302,7 +373,7 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="users-page">
+    <div className="users-page dashboard-stack">
       <UserFilters
         actions={
           <CsvDownloadButton
@@ -331,30 +402,35 @@ export default function UsersPage() {
         </section>
       ) : null}
 
-      <div className="users-grid">
-        <UserForm
-          mode={editingUser ? 'edit' : 'create'}
-          options={options}
-          canManageAcrossSchools={session.user.role === 'SUPER_ADMIN'}
-          initialUser={editingUser}
-          submitting={submitting || loadingOptions}
-          onSubmit={handleSubmit}
-          onCancel={editingUser ? () => setEditingUser(null) : undefined}
-        />
+      <UserForm
+        mode={editingUser ? 'edit' : 'create'}
+        options={options}
+        canManageAcrossSchools={session.user.role === 'SUPER_ADMIN'}
+        initialUser={editingUser}
+        submitting={submitting || loadingOptions}
+        onSubmit={handleSubmit}
+        onCancel={editingUser ? () => setEditingUser(null) : undefined}
+      />
 
-        <UserTable
-          currentUserRole={session.user.role}
-          users={users}
-          loading={loadingUsers}
-          meta={meta}
-          deletingUserId={deletingUserId}
-          statusUpdatingUserId={statusUpdatingUserId}
-          onEdit={setEditingUser}
-          onDelete={handleDelete}
-          onToggleStatus={handleToggleStatus}
-          onPageChange={setPage}
-        />
-      </div>
+      <UserPermissionManager
+        loading={loadingPermissions}
+        permissionState={permissionState}
+        saving={savingPermissions}
+        onSubmit={handleSavePermissions}
+      />
+
+      <UserTable
+        currentUserRole={session.user.role}
+        users={users}
+        loading={loadingUsers}
+        meta={meta}
+        deletingUserId={deletingUserId}
+        statusUpdatingUserId={statusUpdatingUserId}
+        onEdit={setEditingUser}
+        onDelete={handleDelete}
+        onToggleStatus={handleToggleStatus}
+        onPageChange={setPage}
+      />
 
       <ConfirmDialog
         confirmLabel="Deactivate user"

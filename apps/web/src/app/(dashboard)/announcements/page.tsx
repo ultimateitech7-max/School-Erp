@@ -5,6 +5,7 @@ import { Banner } from '@/components/ui/banner';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Spinner } from '@/components/ui/spinner';
+import { getStoredAuthSession } from '@/utils/auth-storage';
 import { apiFetch, type ApiSuccessResponse, type NoticeRecord } from '@/utils/api';
 
 function formatDate(value: string) {
@@ -16,6 +17,7 @@ function formatDate(value: string) {
 }
 
 export default function AnnouncementsPage() {
+  const session = getStoredAuthSession();
   const [items, setItems] = useState<NoticeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +42,17 @@ export default function AnnouncementsPage() {
         setLoading(false);
       });
   }, []);
+
+  if (!session?.permissions.includes('communication.read')) {
+    return (
+      <section className="card panel">
+        <h2>Announcements Access Restricted</h2>
+        <p className="muted-text">
+          You do not have permission to access announcements.
+        </p>
+      </section>
+    );
+  }
 
   if (loading) {
     return (

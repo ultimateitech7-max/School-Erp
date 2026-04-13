@@ -18,6 +18,7 @@ import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { JwtUser } from '../auth/strategies/jwt.strategy';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserPermissionsDto } from './dto/update-user-permissions.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UserQueryDto } from './dto/user-query.dto';
@@ -59,6 +60,13 @@ export class UsersController {
     return this.usersService.findOne(currentUser, id);
   }
 
+  @Get(':id/permissions')
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN)
+  @Permissions('school.settings.manage')
+  findPermissions(@CurrentUser() currentUser: JwtUser, @Param('id') id: string) {
+    return this.usersService.findPermissions(currentUser, id);
+  }
+
   @Patch(':id')
   @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN)
   @Permissions('school.settings.manage')
@@ -68,6 +76,17 @@ export class UsersController {
     @Body() dto: UpdateUserDto,
   ) {
     return this.usersService.update(currentUser, id, dto);
+  }
+
+  @Patch(':id/permissions')
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN)
+  @Permissions('school.settings.manage')
+  updatePermissions(
+    @CurrentUser() currentUser: JwtUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateUserPermissionsDto,
+  ) {
+    return this.usersService.updatePermissions(currentUser, id, dto);
   }
 
   @Patch(':id/status')

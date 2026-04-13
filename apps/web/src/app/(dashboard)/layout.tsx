@@ -9,13 +9,14 @@ import { Field, Select } from '@/components/ui/field';
 import { Spinner } from '@/components/ui/spinner';
 import { useSchoolBranding } from '@/hooks/use-school-branding';
 import { useSchoolScope } from '@/hooks/use-school-scope';
-import { getStoredAuthSession, type AuthSession } from '@/utils/auth-storage';
+import { getStoredAuthSession, storeAuthSession, type AuthSession } from '@/utils/auth-storage';
 import {
   apiFetch,
   type ApiSuccessResponse,
   type UserOptionsPayload,
   type UserRole,
 } from '@/utils/api';
+import { authService } from '@/services/auth.service';
 
 const titles: Record<string, string> = {
   '/': 'Dashboard',
@@ -30,6 +31,7 @@ const titles: Record<string, string> = {
   '/parents': 'Parents',
   '/users': 'Users & Staff',
   '/fees': 'Fees',
+  '/transport': 'Transport',
   '/classes': 'Classes',
   '/sections': 'Sections',
   '/subjects': 'Subjects',
@@ -62,6 +64,7 @@ const descriptions: Record<string, string> = {
   '/parents': 'Manage guardians, parent portal access, and linked children cleanly.',
   '/users': 'Manage staff access, role assignment, and administrative control.',
   '/fees': 'Create fee structures, assign dues, and manage school fee setup.',
+  '/transport': 'Manage transport operations, route planning, and vehicle coordination.',
   '/classes': 'Build class structures, assign subjects, and manage academic setup.',
   '/sections': 'Configure sections, room details, and class organization.',
   '/subjects': 'Maintain subject catalog and curriculum mapping cleanly.',
@@ -145,6 +148,20 @@ export default function DashboardLayout({
 
     setSession(storedSession);
     setSessionLoaded(true);
+
+    void authService
+      .getProfile()
+      .then((profile) => {
+        const nextSession = {
+          accessToken: token,
+          permissions: profile.permissions,
+          user: profile.user,
+        };
+
+        storeAuthSession(nextSession);
+        setSession(nextSession);
+      })
+      .catch(() => undefined);
   }, [router]);
 
   useEffect(() => {

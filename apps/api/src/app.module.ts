@@ -33,6 +33,7 @@ import { HolidaysModule } from './modules/holidays/holidays.module';
 import { StudentsModule } from './modules/students/students.module';
 import { SubjectsModule } from './modules/subjects/subjects.module';
 import { TimetablesModule } from './modules/timetables/timetables.module';
+import { TransportModule } from './modules/transport/transport.module';
 import { UsersModule } from './modules/users/users.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -81,6 +82,7 @@ import { RedisModule } from './redis/redis.module';
     SectionsModule,
     SubjectsModule,
     TimetablesModule,
+    TransportModule,
   ],
   providers: [
     RolesGuard,

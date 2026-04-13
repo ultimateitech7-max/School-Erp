@@ -102,7 +102,7 @@ export function UserForm({
 
   return (
     <section className="card panel user-form-panel">
-      <div className="panel-heading">
+      <div className="panel-heading compact-panel-heading">
         <div>
           <h2>{mode === 'edit' ? 'Edit User' : 'Add User'}</h2>
           <p className="muted-text">
@@ -117,8 +117,8 @@ export function UserForm({
         ) : null}
       </div>
 
-      <form className="simple-form" onSubmit={handleSubmit}>
-        <label>
+      <form className="simple-form form-grid form-grid-application compact-form-grid user-form-grid" onSubmit={handleSubmit}>
+        <label className="form-grid-span-full">
           <span>Full Name</span>
           <input
             required
@@ -203,11 +203,6 @@ export function UserForm({
         </label>
 
         <label>
-          <span>User Type</span>
-          <input readOnly type="text" value={derivedUserType} />
-        </label>
-
-        <label>
           <span>Designation</span>
           <input
             type="text"
@@ -263,15 +258,17 @@ export function UserForm({
           </select>
         </label>
 
-        <button className="primary-button" disabled={submitting} type="submit">
-          {submitting
-            ? mode === 'edit'
-              ? 'Saving...'
-              : 'Creating...'
-            : mode === 'edit'
-              ? 'Save Changes'
-              : 'Create User'}
-        </button>
+        <div className="form-grid-span-full user-form-actions">
+          <button className="primary-button" disabled={submitting} type="submit">
+            {submitting
+              ? mode === 'edit'
+                ? 'Saving...'
+                : 'Creating...'
+              : mode === 'edit'
+                ? 'Save Changes'
+                : 'Create User'}
+          </button>
+        </div>
       </form>
     </section>
   );

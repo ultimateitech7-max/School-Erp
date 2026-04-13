@@ -98,6 +98,7 @@ export type AdmissionApplicationStatus =
 export type NoticeAudienceType = 'ALL' | 'STUDENTS' | 'PARENTS' | 'STAFF';
 export type HolidayType = 'HOLIDAY' | 'EVENT';
 export type HolidayAudience = 'ALL' | 'STAFF' | 'STUDENT';
+export type TransportAssignmentStatus = 'ACTIVE' | 'INACTIVE' | 'STOPPED';
 
 export interface ApiMeta {
   page: number;
@@ -127,6 +128,31 @@ export interface UserRecord {
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PermissionCatalogRecord {
+  code: string;
+  name: string;
+  description: string | null;
+  actionKey: string;
+  group: string;
+}
+
+export interface UserPermissionRecord {
+  userId: string;
+  userName: string;
+  role: UserRole;
+  roleCode: string;
+  rolePermissions: string[];
+  grantedPermissions: string[];
+  revokedPermissions: string[];
+  effectivePermissions: string[];
+  catalog: PermissionCatalogRecord[];
+}
+
+export interface UserPermissionsFormPayload {
+  grantedPermissions: string[];
+  revokedPermissions: string[];
 }
 
 export interface UserRoleOption {
@@ -189,6 +215,157 @@ export interface UserFormPayload {
   userType?: UserType;
   designation?: string;
   isActive?: boolean;
+  schoolId?: string;
+}
+
+export interface TransportSessionOption {
+  id: string;
+  name: string;
+  isCurrent: boolean;
+}
+
+export interface TransportStudentOption {
+  id: string;
+  name: string;
+  studentCode: string;
+  className: string | null;
+  sectionName: string | null;
+}
+
+export interface TransportRouteOption {
+  id: string;
+  routeCode: string;
+  routeName: string;
+  monthlyFee: number;
+}
+
+export interface TransportVehicleOption {
+  id: string;
+  vehicleNumber: string;
+  vehicleType: string | null;
+  capacity: number;
+}
+
+export interface TransportOptionsPayload {
+  currentSessionId: string | null;
+  currentSessionName: string | null;
+  sessions: TransportSessionOption[];
+  students: TransportStudentOption[];
+  routes: TransportRouteOption[];
+  vehicles: TransportVehicleOption[];
+  assignmentStatuses: TransportAssignmentStatus[];
+}
+
+export interface TransportRouteRecord {
+  id: string;
+  schoolId: string;
+  routeCode: string;
+  routeName: string;
+  startPoint: string;
+  endPoint: string;
+  distanceKm: number | null;
+  monthlyFee: number;
+  isActive: boolean;
+  status: UserStatus;
+  activeAssignments: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TransportVehicleRecord {
+  id: string;
+  schoolId: string;
+  vehicleNumber: string;
+  vehicleType: string | null;
+  capacity: number;
+  driverName: string | null;
+  driverPhone: string | null;
+  attendantName: string | null;
+  isActive: boolean;
+  status: UserStatus;
+  activeAssignments: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TransportAssignmentRecord {
+  id: string;
+  schoolId: string;
+  sessionId: string;
+  startDate: string;
+  endDate: string | null;
+  pickupPoint: string | null;
+  dropPoint: string | null;
+  monthlyFee: number;
+  status: TransportAssignmentStatus;
+  session: {
+    id: string;
+    name: string;
+  };
+  student: {
+    id: string;
+    name: string;
+    studentCode: string;
+  };
+  route: {
+    id: string;
+    code: string;
+    name: string;
+  };
+  vehicle: {
+    id: string;
+    number: string;
+    type: string | null;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TransportDashboardPayload {
+  summary: {
+    activeRoutes: number;
+    activeVehicles: number;
+    activeAssignments: number;
+    estimatedMonthlyRevenue: number;
+  };
+  routes: TransportRouteRecord[];
+  vehicles: TransportVehicleRecord[];
+  assignments: TransportAssignmentRecord[];
+}
+
+export interface CreateTransportRoutePayload {
+  routeCode: string;
+  routeName: string;
+  startPoint: string;
+  endPoint: string;
+  distanceKm?: number;
+  monthlyFee: number;
+  isActive?: boolean;
+  schoolId?: string;
+}
+
+export interface CreateTransportVehiclePayload {
+  vehicleNumber: string;
+  vehicleType?: string;
+  capacity: number;
+  driverName?: string;
+  driverPhone?: string;
+  attendantName?: string;
+  isActive?: boolean;
+  schoolId?: string;
+}
+
+export interface CreateTransportAssignmentPayload {
+  sessionId: string;
+  studentId: string;
+  routeId: string;
+  vehicleId?: string;
+  pickupPoint?: string;
+  dropPoint?: string;
+  monthlyFeeOverride?: number;
+  startDate: string;
+  endDate?: string;
+  status?: TransportAssignmentStatus;
   schoolId?: string;
 }
 
@@ -658,6 +835,7 @@ export interface FeeReceiptTemplateRecord {
   footerNote: string;
   termsAndConditions: string;
   signatureLabel: string;
+  signatureImageUrl: string | null;
   showLogo: boolean;
   showSignature: boolean;
   customFields: FeeReceiptTemplateCustomField[];
@@ -671,6 +849,7 @@ export interface FeeReceiptTemplateFormPayload {
   footerNote?: string;
   termsAndConditions?: string;
   signatureLabel?: string;
+  signatureImageUrl?: string | null;
   showLogo?: boolean;
   showSignature?: boolean;
   customFields?: FeeReceiptTemplateCustomField[];
@@ -1216,6 +1395,14 @@ export interface DashboardExamsRecord {
   schoolId: string | null;
   summary: DashboardExamSummaryRecord;
   recentExams: DashboardExamRecord[];
+}
+
+export interface DashboardBootstrapRecord {
+  overview: DashboardOverviewRecord;
+  attendance: DashboardAttendanceRecord;
+  fees: DashboardFeesRecord;
+  classes: DashboardClassesRecord;
+  exams: DashboardExamsRecord;
 }
 
 export interface AcademicSessionRecord {

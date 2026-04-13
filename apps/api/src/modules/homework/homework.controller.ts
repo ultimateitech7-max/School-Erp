@@ -17,7 +17,7 @@ export class HomeworkController {
   constructor(private readonly homeworkService: HomeworkService) {}
 
   @Post()
-  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER, RoleType.STAFF)
   @Permissions('homework.manage')
   create(@CurrentUser() currentUser: JwtUser, @Body() dto: CreateHomeworkDto) {
     return this.homeworkService.create(currentUser, dto);
@@ -28,6 +28,7 @@ export class HomeworkController {
     RoleType.SUPER_ADMIN,
     RoleType.SCHOOL_ADMIN,
     RoleType.TEACHER,
+    RoleType.STAFF,
     RoleType.STUDENT,
     RoleType.PARENT,
   )
@@ -43,7 +44,7 @@ export class HomeworkController {
   }
 
   @Get('options')
-  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER, RoleType.STAFF)
   @Permissions('homework.read')
   findOptions(
     @CurrentUser() currentUser: JwtUser,
@@ -53,7 +54,7 @@ export class HomeworkController {
   }
 
   @Get('class/:classId')
-  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER, RoleType.STAFF)
   @Permissions('homework.read')
   findByClass(
     @CurrentUser() currentUser: JwtUser,

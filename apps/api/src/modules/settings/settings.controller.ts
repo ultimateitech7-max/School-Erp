@@ -87,6 +87,27 @@ export class SettingsController {
     return this.settingsService.updateFeeReceiptTemplate(currentUser, dto);
   }
 
+  @Post('receipt-template/signature')
+  @Permissions('school.settings.manage')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: 5 * 1024 * 1024,
+      },
+    }),
+  )
+  uploadReceiptTemplateSignature(
+    @CurrentUser() currentUser: JwtUser,
+    @UploadedFile() file?: BrandingLogoUploadFile,
+    @Query('schoolId') schoolId?: string,
+  ) {
+    return this.settingsService.uploadReceiptTemplateSignature(
+      currentUser,
+      file,
+      schoolId ?? null,
+    );
+  }
+
   @Post('branding/logo')
   @Permissions('school.settings.manage')
   @UseInterceptors(

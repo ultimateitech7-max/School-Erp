@@ -70,6 +70,18 @@ export const FeesIcon = createIcon(
   </>,
 );
 
+export const TransportIcon = createIcon(
+  <>
+    <rect x="3.5" y="7" width="17" height="9" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
+    <path d="M7 16v2" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+    <path d="M17 16v2" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+    <path d="M6.5 10.5h5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+    <path d="M14.5 10.5h3" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+    <circle cx="7.5" cy="16.5" r="1.5" fill="currentColor" />
+    <circle cx="16.5" cy="16.5" r="1.5" fill="currentColor" />
+  </>,
+);
+
 export const AttendanceIcon = createIcon(
   <>
     <rect height="16" rx="3" stroke="currentColor" strokeWidth="1.8" width="16" x="4" y="5" />

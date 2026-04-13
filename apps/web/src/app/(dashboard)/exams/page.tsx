@@ -206,12 +206,8 @@ export default function ExamsPage() {
       });
   }, [selectedStudentId]);
 
-  const canManageExams =
-    session?.user.role === 'SUPER_ADMIN' ||
-    session?.user.role === 'SCHOOL_ADMIN' ||
-    session?.user.role === 'TEACHER';
-  const canConfigureExams =
-    session?.user.role === 'SUPER_ADMIN' || session?.user.role === 'SCHOOL_ADMIN';
+  const canManageExams = Boolean(session?.permissions.includes('exams.read'));
+  const canConfigureExams = Boolean(session?.permissions.includes('exams.manage'));
 
   const filteredStudents = useMemo(() => {
     if (!selectedExam?.class?.id) {

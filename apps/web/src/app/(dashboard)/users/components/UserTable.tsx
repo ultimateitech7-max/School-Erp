@@ -41,8 +41,8 @@ export function UserTable({
   onPageChange,
 }: UserTableProps) {
   return (
-    <section className="card panel">
-      <div className="panel-heading">
+    <section className="card panel compact-panel-stack">
+      <div className="panel-heading compact-panel-heading">
         <div>
           <h2>Users List</h2>
           <p className="muted-text">
@@ -62,7 +62,7 @@ export function UserTable({
 
       {!loading && users.length > 0 ? (
         <>
-          <TableWrap>
+          <TableWrap className="compact-table-wrap">
             <Table>
               <thead>
                 <tr>

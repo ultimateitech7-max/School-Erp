@@ -56,6 +56,11 @@ export class UpdateFeeReceiptTemplateDto {
   signatureLabel?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  signatureImageUrl?: string | null;
+
+  @IsOptional()
   @Type(() => Boolean)
   @IsBoolean()
   showLogo?: boolean;

@@ -13,6 +13,7 @@ import {
   apiFetch,
   createQueryString,
   type ApiSuccessResponse,
+  type DashboardBootstrapRecord,
   type DashboardAttendanceRecord,
   type DashboardClassesRecord,
   type DashboardExamsRecord,
@@ -126,30 +127,16 @@ export default function DashboardAnalyticsPage() {
       date: selectedDate || undefined,
     });
 
-    void Promise.all([
-      apiFetch<ApiSuccessResponse<DashboardOverviewRecord>>(
-        `/dashboard/overview${feeQuery}`,
-      ),
-      apiFetch<ApiSuccessResponse<DashboardAttendanceRecord>>('/dashboard/attendance'),
-      apiFetch<ApiSuccessResponse<DashboardFeesRecord>>(`/dashboard/fees${feeQuery}`),
-      apiFetch<ApiSuccessResponse<DashboardClassesRecord>>('/dashboard/classes'),
-      apiFetch<ApiSuccessResponse<DashboardExamsRecord>>('/dashboard/exams'),
-    ])
-      .then(
-        ([
-          overviewResponse,
-          attendanceResponse,
-          feesResponse,
-          classesResponse,
-          examsResponse,
-        ]) => {
-          setOverview(overviewResponse.data);
-          setAttendance(attendanceResponse.data);
-          setFees(feesResponse.data);
-          setClasses(classesResponse.data);
-          setExams(examsResponse.data);
-        },
-      )
+    void apiFetch<ApiSuccessResponse<DashboardBootstrapRecord>>(
+      `/dashboard/bootstrap${feeQuery}`,
+    )
+      .then((response) => {
+        setOverview(response.data.overview);
+        setAttendance(response.data.attendance);
+        setFees(response.data.fees);
+        setClasses(response.data.classes);
+        setExams(response.data.exams);
+      })
       .catch((loadError) => {
         setError(
           loadError instanceof Error

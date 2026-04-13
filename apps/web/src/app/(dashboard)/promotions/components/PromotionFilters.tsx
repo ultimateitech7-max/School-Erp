@@ -33,18 +33,19 @@ export function PromotionFilters({
     options.classes.find((item) => item.id === fromClassId) ?? null;
 
   return (
-    <section className="card panel students-toolbar">
-      <div>
-        <h2>Promotion Workflow</h2>
-        <p className="muted-text">
-          Filter a source session, class, and section to prepare eligible students
-          for promotion or detention.
-        </p>
+    <section className="card panel compact-panel-stack">
+      <div className="panel-heading compact-panel-heading">
+        <div>
+          <h2>Promotion Workflow</h2>
+          <p className="muted-text">
+            Keep filters in one line and prepare eligible students faster.
+          </p>
+        </div>
       </div>
 
-      <div className="students-toolbar-actions">
+      <div className="promotion-filter-row">
         <input
-          className="search-input"
+          className="search-input promotion-filter-search"
           disabled={loading}
           placeholder="Search by student name, code, or admission no"
           type="search"
@@ -91,7 +92,7 @@ export function PromotionFilters({
           ))}
         </select>
 
-        <button className="secondary-button" onClick={onReset} type="button">
+        <button className="secondary-button promotion-filter-reset" onClick={onReset} type="button">
           Reset
         </button>
       </div>

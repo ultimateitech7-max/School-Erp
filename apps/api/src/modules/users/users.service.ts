@@ -17,6 +17,7 @@ import { RedisService } from '../../redis/redis.service';
 import { AuditService } from '../audit/audit.service';
 import { JwtUser } from '../auth/strategies/jwt.strategy';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserPermissionsDto } from './dto/update-user-permissions.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UserQueryDto } from './dto/user-query.dto';
@@ -34,6 +35,11 @@ const MANAGEABLE_ROLE_TYPES = [
 ] as const;
 
 const userDetailsInclude = Prisma.validator<Prisma.UserInclude>()({
+  school: {
+    select: {
+      settingsJson: true,
+    },
+  },
   role: {
     include: {
       rolePermissions: {
@@ -65,6 +71,11 @@ export interface SafeUser {
   lastLoginAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+interface UserPermissionOverrideState {
+  grantedPermissions: string[];
+  revokedPermissions: string[];
 }
 
 @Injectable()
@@ -302,6 +313,56 @@ export class UsersService {
     };
   }
 
+  async findPermissions(currentUser: JwtUser, id: string) {
+    const user = await this.findPermissionManageableUserOrThrow(currentUser, id);
+    const [catalog, schoolSettings] = await Promise.all([
+      this.prisma.permission.findMany({
+        where: {
+          isActive: true,
+        },
+        orderBy: {
+          permissionName: 'asc',
+        },
+      }),
+      this.getSchoolSettingsForUser(user),
+    ]);
+
+    const rolePermissions = user.role.rolePermissions.map(
+      (item) => item.permission.permissionCode,
+    );
+    const overrides = this.getUserPermissionOverride(
+      schoolSettings,
+      user.id,
+      new Set(catalog.map((item) => item.permissionCode)),
+    );
+    const effectivePermissions = this.applyPermissionOverrides(
+      rolePermissions,
+      overrides,
+    );
+
+    return {
+      success: true,
+      message: 'User permissions fetched successfully.',
+      data: {
+        userId: user.id,
+        userName: user.fullName,
+        role: user.role.roleType,
+        roleCode: user.role.roleCode,
+        rolePermissions,
+        grantedPermissions: overrides.grantedPermissions,
+        revokedPermissions: overrides.revokedPermissions,
+        effectivePermissions,
+        catalog: catalog.map((item) => ({
+          code: item.permissionCode,
+          name: item.permissionName,
+          description: item.description,
+          actionKey: item.actionKey,
+          group: item.permissionCode.split('.')[0] ?? 'general',
+        })),
+      },
+    };
+  }
+
   async update(currentUser: JwtUser, id: string, dto: UpdateUserDto) {
     const existingUser = await this.findWritableUserOrThrow(currentUser, id);
 
@@ -402,6 +463,74 @@ export class UsersService {
       message: 'User updated successfully.',
       data: this.toSafeUser(user),
     };
+  }
+
+  async updatePermissions(
+    currentUser: JwtUser,
+    id: string,
+    dto: UpdateUserPermissionsDto,
+  ) {
+    const user = await this.findPermissionManageableUserOrThrow(currentUser, id);
+    const school = await this.findSchoolForPermissionOverride(user.schoolId);
+    const settingsJson = this.getSettingsJson(school.settingsJson);
+    const permissionCatalog = await this.prisma.permission.findMany({
+      where: {
+        isActive: true,
+      },
+      select: {
+        permissionCode: true,
+      },
+    });
+    const allowedPermissionCodes = new Set(
+      permissionCatalog.map((item) => item.permissionCode),
+    );
+    const grantedPermissions = this.normalizePermissionCodes(
+      dto.grantedPermissions,
+      allowedPermissionCodes,
+    );
+    const revokedPermissions = this.normalizePermissionCodes(
+      dto.revokedPermissions,
+      allowedPermissionCodes,
+    ).filter((code) => !grantedPermissions.includes(code));
+    const currentOverrideMap = this.getPermissionOverrideMap(settingsJson);
+    const nextOverrideMap = {
+      ...currentOverrideMap,
+      [user.id]: {
+        grantedPermissions,
+        revokedPermissions,
+      },
+    };
+
+    if (!grantedPermissions.length && !revokedPermissions.length) {
+      delete nextOverrideMap[user.id];
+    }
+
+    await this.prisma.school.update({
+      where: {
+        id: school.id,
+      },
+      data: {
+        settingsJson: {
+          ...settingsJson,
+          userPermissionOverrides: nextOverrideMap,
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    await this.invalidateUserCache();
+    await this.auditService.write({
+      action: 'users.permissions.update',
+      entity: 'user',
+      entityId: user.id,
+      actorUserId: currentUser.id,
+      schoolId: user.schoolId,
+      metadata: {
+        grantedPermissions,
+        revokedPermissions,
+      },
+    });
+
+    return this.findPermissions(currentUser, id);
   }
 
   async updateStatus(
@@ -513,9 +642,18 @@ export class UsersService {
   }
 
   getPermissionCodes(user: UserWithRole): string[] {
-    return user.role.rolePermissions.map(
+    const rolePermissions = user.role.rolePermissions.map(
       (rolePermission) => rolePermission.permission.permissionCode,
     );
+
+    if (!user.schoolId) {
+      return [...new Set(rolePermissions)].sort();
+    }
+
+    const settingsJson = this.getSettingsJson(user.school?.settingsJson ?? {});
+    const overrides = this.getUserPermissionOverride(settingsJson, user.id);
+
+    return this.applyPermissionOverrides(rolePermissions, overrides);
   }
 
   toSafeUser(user: UserWithRole): SafeUser {
@@ -621,6 +759,21 @@ export class UsersService {
     ) {
       throw new ForbiddenException(
         'School admins can manage teachers and staff only.',
+      );
+    }
+
+    return user;
+  }
+
+  private async findPermissionManageableUserOrThrow(
+    currentUser: JwtUser,
+    id: string,
+  ) {
+    const user = await this.findWritableUserOrThrow(currentUser, id);
+
+    if (user.role.roleType !== RoleType.TEACHER && user.role.roleType !== RoleType.STAFF) {
+      throw new ForbiddenException(
+        'Granular permission management is available for teachers and staff only.',
       );
     }
 
@@ -753,6 +906,119 @@ export class UsersService {
 
   private async invalidateUserCache() {
     await this.redisService.deleteByPattern('users:*');
+  }
+
+  private getSettingsJson(value: Prisma.JsonValue) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {} as Record<string, any>;
+    }
+
+    return value as Record<string, any>;
+  }
+
+  private getPermissionOverrideMap(settingsJson: Record<string, any>) {
+    if (
+      !settingsJson.userPermissionOverrides ||
+      typeof settingsJson.userPermissionOverrides !== 'object' ||
+      Array.isArray(settingsJson.userPermissionOverrides)
+    ) {
+      return {} as Record<string, UserPermissionOverrideState>;
+    }
+
+    return settingsJson.userPermissionOverrides as Record<string, UserPermissionOverrideState>;
+  }
+
+  private getUserPermissionOverride(
+    settingsJson: Record<string, any>,
+    userId: string,
+    allowedCodes?: Set<string>,
+  ): UserPermissionOverrideState {
+    const rawOverride = this.getPermissionOverrideMap(settingsJson)[userId];
+
+    return {
+      grantedPermissions: this.normalizePermissionCodes(
+        rawOverride?.grantedPermissions,
+        allowedCodes,
+      ),
+      revokedPermissions: this.normalizePermissionCodes(
+        rawOverride?.revokedPermissions,
+        allowedCodes,
+      ),
+    };
+  }
+
+  private normalizePermissionCodes(
+    value: unknown,
+    allowedCodes?: Set<string>,
+  ): string[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return Array.from(
+      new Set(
+        value
+          .map((item) => String(item).trim())
+          .filter((item) => item && (!allowedCodes || allowedCodes.has(item))),
+      ),
+    ).sort((left, right) => left.localeCompare(right));
+  }
+
+  private applyPermissionOverrides(
+    rolePermissions: string[],
+    overrides: UserPermissionOverrideState,
+  ) {
+    const effectivePermissions = new Set(rolePermissions);
+
+    overrides.revokedPermissions.forEach((permission) => {
+      effectivePermissions.delete(permission);
+    });
+    overrides.grantedPermissions.forEach((permission) => {
+      effectivePermissions.add(permission);
+    });
+
+    return Array.from(effectivePermissions).sort((left, right) =>
+      left.localeCompare(right),
+    );
+  }
+
+  private async getSchoolSettingsForUser(user: UserWithRole) {
+    if (!user.schoolId) {
+      return {} as Record<string, any>;
+    }
+
+    if (user.school?.settingsJson) {
+      return this.getSettingsJson(user.school.settingsJson);
+    }
+
+    const school = await this.prisma.school.findUnique({
+      where: {
+        id: user.schoolId,
+      },
+      select: {
+        settingsJson: true,
+      },
+    });
+
+    return this.getSettingsJson(school?.settingsJson ?? {});
+  }
+
+  private async findSchoolForPermissionOverride(schoolId: string | null) {
+    if (!schoolId) {
+      throw new BadRequestException(
+        'A school-scoped user is required for granular permission management.',
+      );
+    }
+
+    return this.prisma.school.findUniqueOrThrow({
+      where: {
+        id: schoolId,
+      },
+      select: {
+        id: true,
+        settingsJson: true,
+      },
+    });
   }
 
   private splitName(fullName: string) {

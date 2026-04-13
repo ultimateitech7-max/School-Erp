@@ -25,7 +25,7 @@ import { UpdateAttendanceDto } from './dto/update-attendance.dto';
 
 @Controller('attendance')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
-@Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
+@Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER, RoleType.STAFF)
 export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
 

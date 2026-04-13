@@ -9,12 +9,14 @@ import type {
   SchoolBrandingRecord,
   SchoolSettingsRecord,
 } from '@/utils/api';
+import { resolveAssetUrl } from '@/utils/api';
 import { buildFeeReceiptPreviewHtml } from '@/utils/fee-receipt';
 
 interface ReceiptTemplateFormProps {
   initialValue: FeeReceiptTemplateRecord;
   isSubmitting: boolean;
   onSubmit: (payload: FeeReceiptTemplateFormPayload) => Promise<void>;
+  onUploadSignature: (file: File) => Promise<FeeReceiptTemplateRecord>;
   schoolSettings: SchoolSettingsRecord;
   branding: SchoolBrandingRecord;
 }
@@ -23,10 +25,13 @@ export function ReceiptTemplateForm({
   initialValue,
   isSubmitting,
   onSubmit,
+  onUploadSignature,
   schoolSettings,
   branding,
 }: ReceiptTemplateFormProps) {
   const [form, setForm] = useState<FeeReceiptTemplateRecord>(initialValue);
+  const [isUploadingSignature, setIsUploadingSignature] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setForm(initialValue);
@@ -47,9 +52,37 @@ export function ReceiptTemplateForm({
     await onSubmit(form);
   };
 
+  const handleSignatureFileChange = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    setIsUploadingSignature(true);
+    setUploadMessage(null);
+
+    try {
+      const updatedTemplate = await onUploadSignature(file);
+      setForm(updatedTemplate);
+      setUploadMessage('Signature uploaded successfully.');
+    } catch (error) {
+      setUploadMessage(
+        error instanceof Error ? error.message : 'Failed to upload signature.',
+      );
+    } finally {
+      setIsUploadingSignature(false);
+      event.target.value = '';
+    }
+  };
+
+  const previewSignatureUrl = resolveAssetUrl(form.signatureImageUrl);
+
   return (
     <section className="card panel academic-form-panel">
-      <div className="panel-heading">
+      <div className="panel-heading compact-panel-heading">
         <div>
           <h2>Receipt Template</h2>
           <p className="muted-text">
@@ -58,8 +91,8 @@ export function ReceiptTemplateForm({
         </div>
       </div>
 
-      <form className="simple-form" onSubmit={handleSubmit}>
-        <div className="form-grid compact-form-grid">
+      <form className="simple-form compact-panel-stack receipt-template-form" onSubmit={handleSubmit}>
+        <div className="form-grid compact-form-grid receipt-template-grid">
           <Field label="Receipt Title">
             <Input
               value={form.receiptTitle}
@@ -77,39 +110,42 @@ export function ReceiptTemplateForm({
               }
             />
           </Field>
+
+          <Field label="Header Note">
+            <Textarea
+              className="receipt-template-textarea receipt-template-textarea-sm"
+              value={form.headerNote}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, headerNote: event.target.value }))
+              }
+            />
+          </Field>
+
+          <Field label="Footer Note">
+            <Textarea
+              className="receipt-template-textarea receipt-template-textarea-sm"
+              value={form.footerNote}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, footerNote: event.target.value }))
+              }
+            />
+          </Field>
+
+          <Field className="form-grid-span-full" label="Terms & Conditions">
+            <Textarea
+              className="receipt-template-textarea"
+              value={form.termsAndConditions}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  termsAndConditions: event.target.value,
+                }))
+              }
+            />
+          </Field>
         </div>
 
-        <Field label="Header Note">
-          <Textarea
-            value={form.headerNote}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, headerNote: event.target.value }))
-            }
-          />
-        </Field>
-
-        <Field label="Footer Note">
-          <Textarea
-            value={form.footerNote}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, footerNote: event.target.value }))
-            }
-          />
-        </Field>
-
-        <Field label="Terms & Conditions">
-          <Textarea
-            value={form.termsAndConditions}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                termsAndConditions: event.target.value,
-              }))
-            }
-          />
-        </Field>
-
-        <div className="form-grid compact-form-grid">
+        <div className="receipt-template-signature-grid">
           <Field label="Signature Label">
             <Input
               value={form.signatureLabel}
@@ -119,28 +155,74 @@ export function ReceiptTemplateForm({
             />
           </Field>
 
-          <label className="checkbox-inline">
-            <input
-              checked={form.showLogo}
-              type="checkbox"
+          <Field label="Upload Signature">
+            <Input
+              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+              disabled={isSubmitting || isUploadingSignature}
+              type="file"
+              onChange={handleSignatureFileChange}
+            />
+          </Field>
+
+          <Field label="Signature Image URL">
+            <Input
+              placeholder="https://example.com/signature.png or uploaded asset path"
+              value={form.signatureImageUrl ?? ''}
               onChange={(event) =>
-                setForm((current) => ({ ...current, showLogo: event.target.checked }))
+                setForm((current) => ({
+                  ...current,
+                  signatureImageUrl: event.target.value || null,
+                }))
               }
             />
-            <span>Show school logo on receipt</span>
-          </label>
+          </Field>
+
+          <div className="receipt-template-toggle-stack">
+            <label className="receipt-template-toggle-inline">
+              <input
+                checked={form.showLogo}
+                type="checkbox"
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, showLogo: event.target.checked }))
+                }
+              />
+              <span>Show school logo on receipt</span>
+            </label>
+
+            <label className="receipt-template-toggle-inline">
+              <input
+                checked={form.showSignature}
+                type="checkbox"
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, showSignature: event.target.checked }))
+                }
+              />
+              <span>Show signature line</span>
+            </label>
+          </div>
         </div>
 
-        <label className="checkbox-inline">
-          <input
-            checked={form.showSignature}
-            type="checkbox"
-            onChange={(event) =>
-              setForm((current) => ({ ...current, showSignature: event.target.checked }))
-            }
-          />
-          <span>Show signature line</span>
-        </label>
+        {previewSignatureUrl ? (
+          <div className="subtle-card receipt-template-signature-preview">
+            <div className="portal-notice-head">
+              <strong>Signature Preview</strong>
+              <span className="muted-text">
+                {isUploadingSignature ? 'Uploading...' : 'Ready'}
+              </span>
+            </div>
+            <img
+              alt="Receipt signature preview"
+              className="receipt-template-signature-image"
+              src={previewSignatureUrl}
+            />
+          </div>
+        ) : null}
+
+        {uploadMessage ? (
+          <p className={uploadMessage.includes('successfully') ? 'success-text' : 'error-text'}>
+            {uploadMessage}
+          </p>
+        ) : null}
 
         <div className="subform-stack">
           <div className="subform-header">
@@ -152,7 +234,7 @@ export function ReceiptTemplateForm({
 
           <div className="compact-panel-stack">
             {form.customFields.map((field, index) => (
-              <div className="form-grid compact-form-grid" key={`receipt-custom-${index}`}>
+              <div className="form-grid compact-form-grid receipt-template-custom-row" key={`receipt-custom-${index}`}>
                 <Field label={`Label ${index + 1}`}>
                   <Input
                     value={field.label}
@@ -185,7 +267,7 @@ export function ReceiptTemplateForm({
                   />
                 </Field>
 
-                <div className="form-actions">
+                <div className="form-actions receipt-template-custom-actions">
                   <Button
                     onClick={() =>
                       setForm((current) => ({
@@ -223,9 +305,11 @@ export function ReceiptTemplateForm({
           </div>
         </div>
 
-        <Button disabled={isSubmitting} type="submit">
-          {isSubmitting ? 'Saving...' : 'Save Receipt Template'}
-        </Button>
+        <div className="form-actions">
+          <Button disabled={isSubmitting} type="submit">
+            {isSubmitting ? 'Saving...' : 'Save Receipt Template'}
+          </Button>
+        </div>
       </form>
 
       <div className="receipt-preview-shell">

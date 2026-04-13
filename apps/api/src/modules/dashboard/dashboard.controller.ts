@@ -14,6 +14,14 @@ import { DashboardService } from './dashboard.service';
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 
+  @Get('bootstrap')
+  findBootstrap(
+    @CurrentUser() currentUser: JwtUser,
+    @Query() query: DashboardQueryDto,
+  ) {
+    return this.dashboardService.findBootstrap(currentUser, query);
+  }
+
   @Get('overview')
   findOverview(
     @CurrentUser() currentUser: JwtUser,

@@ -23,6 +23,7 @@ import {
   ReportIcon,
   SettingsIcon,
   StudentsIcon,
+  TransportIcon,
   UsersIcon,
 } from '@/components/ui/icons';
 
@@ -64,7 +65,7 @@ const dashboardNavItems: NavItem[] = [
     href: '/attendance',
     label: 'Attendance',
     icon: AttendanceIcon,
-    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'],
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'STAFF'],
     requiredPermissions: ['attendance.read'],
   },
   {
@@ -108,6 +109,12 @@ const dashboardNavItems: NavItem[] = [
     roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'],
   },
   {
+    href: '/transport',
+    label: 'Transport',
+    icon: TransportIcon,
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'],
+  },
+  {
     href: '/fee-submissions',
     label: 'Fee Submissions',
     icon: FeesIcon,
@@ -139,7 +146,7 @@ const dashboardNavItems: NavItem[] = [
     href: '/timetables',
     label: 'Timetables',
     icon: AcademicIcon,
-    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'],
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'STAFF'],
     requiredPermissions: ['academics.read'],
   },
   {
@@ -153,7 +160,7 @@ const dashboardNavItems: NavItem[] = [
     href: '/homework',
     label: 'Homework',
     icon: HomeworkIcon,
-    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'],
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'STAFF'],
     requiredPermissions: ['homework.read'],
   },
   {
@@ -189,6 +196,7 @@ const dashboardNavItems: NavItem[] = [
     label: 'Announcements',
     icon: NoticeIcon,
     roles: ['TEACHER', 'STAFF'],
+    requiredPermissions: ['communication.read'],
   },
   {
     href: '/messages/inbox',
@@ -200,7 +208,7 @@ const dashboardNavItems: NavItem[] = [
     href: '/exams',
     label: 'Exams & Results',
     icon: ExamsIcon,
-    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER'],
+    roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'TEACHER', 'STAFF'],
     requiredPermissions: ['exams.read'],
   },
   {

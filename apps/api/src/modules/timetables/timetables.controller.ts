@@ -28,7 +28,7 @@ export class TimetablesController {
   constructor(private readonly timetablesService: TimetablesService) {}
 
   @Post()
-  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN)
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.STAFF)
   @Permissions('academics.manage')
   create(
     @CurrentUser() currentUser: JwtUser,
@@ -38,7 +38,7 @@ export class TimetablesController {
   }
 
   @Patch(':id')
-  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN)
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.STAFF)
   @Permissions('academics.manage')
   update(
     @CurrentUser() currentUser: JwtUser,
@@ -49,14 +49,14 @@ export class TimetablesController {
   }
 
   @Delete(':id')
-  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN)
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.STAFF)
   @Permissions('academics.manage')
   remove(@CurrentUser() currentUser: JwtUser, @Param('id') id: string) {
     return this.timetablesService.remove(currentUser, id);
   }
 
   @Get()
-  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER, RoleType.STAFF)
   @Permissions('academics.read')
   findAll(
     @CurrentUser() currentUser: JwtUser,
@@ -66,7 +66,7 @@ export class TimetablesController {
   }
 
   @Get('options')
-  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER, RoleType.STAFF)
   @Permissions('academics.read')
   findOptions(
     @CurrentUser() currentUser: JwtUser,
@@ -76,7 +76,7 @@ export class TimetablesController {
   }
 
   @Get('class/:classId')
-  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER)
+  @Roles(RoleType.SUPER_ADMIN, RoleType.SCHOOL_ADMIN, RoleType.TEACHER, RoleType.STAFF)
   @Permissions('academics.read')
   findByClass(
     @CurrentUser() currentUser: JwtUser,

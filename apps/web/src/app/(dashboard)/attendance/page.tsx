@@ -187,10 +187,10 @@ export default function AttendancePage() {
       });
   }, [attendanceDate, classId, reloadIndex, sectionId, session, status, studentId]);
 
-  const canManageAttendance =
-    session?.user.role === 'SUPER_ADMIN' ||
-    session?.user.role === 'SCHOOL_ADMIN' ||
-    session?.user.role === 'TEACHER';
+  const canReadAttendance = Boolean(session?.permissions.includes('attendance.read'));
+  const canManageAttendance = Boolean(
+    session?.permissions.includes('attendance.manage'),
+  );
   const initialContentLoading =
     loadingOptions && loadingRecords && loadingSummary && records.length === 0;
 
@@ -375,12 +375,12 @@ export default function AttendancePage() {
     );
   }
 
-  if (!canManageAttendance) {
+  if (!canReadAttendance) {
     return (
       <section className="card panel">
         <h2>Attendance Access Restricted</h2>
         <p className="muted-text">
-          Only school admins and teachers can manage attendance.
+          You do not have permission to access attendance.
         </p>
       </section>
     );
@@ -498,22 +498,24 @@ export default function AttendancePage() {
       </section>
 
       <div className="attendance-grid">
-        <AttendanceForm
-          mode={editingRecord ? 'edit' : 'create'}
-          options={options}
-          initialRecord={editingRecord}
-          submitting={submittingSingle}
-          onSubmit={handleCreateAttendance}
-          onCancel={() => setEditingRecord(null)}
-        />
+        {canManageAttendance ? (
+          <AttendanceForm
+            mode={editingRecord ? 'edit' : 'create'}
+            options={options}
+            initialRecord={editingRecord}
+            submitting={submittingSingle}
+            onSubmit={handleCreateAttendance}
+            onCancel={() => setEditingRecord(null)}
+          />
+        ) : null}
 
         <AttendanceTable
           records={records}
           loading={loadingRecords || loadingOptions}
           deletingId={deletingId}
           meta={meta}
-          onEdit={setEditingRecord}
-          onDelete={handleDelete}
+          onEdit={canManageAttendance ? setEditingRecord : undefined}
+          onDelete={canManageAttendance ? handleDelete : undefined}
           onPageChange={setPage}
         />
       </div>

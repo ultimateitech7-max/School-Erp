@@ -610,6 +610,7 @@ export function buildFeeReceiptHtml(receipt: FeeReceiptPayload) {
   const primaryColor = receipt.school.branding.primaryColor || '#0f766e';
   const secondaryColor = receipt.school.branding.secondaryColor || '#102033';
   const logoUrl = resolveAssetUrl(receipt.school.branding.logoUrl);
+  const signatureImageUrl = resolveAssetUrl(receipt.template.signatureImageUrl);
   const customFields = receipt.template.customFields
     .filter((field) => field.label.trim() || field.value.trim())
     .map(
@@ -838,6 +839,16 @@ export function buildFeeReceiptHtml(receipt: FeeReceiptPayload) {
         min-width: 240px;
         text-align: right;
       }
+      .signature img {
+        display: block;
+        max-width: 180px;
+        max-height: 64px;
+        margin: 0 0 10px auto;
+        object-fit: contain;
+      }
+      .signature.has-image .signature-line {
+        margin-top: 0;
+      }
       .signature-line {
         margin-top: 38px;
         border-top: 1px solid var(--secondary);
@@ -945,7 +956,14 @@ export function buildFeeReceiptHtml(receipt: FeeReceiptPayload) {
           </div>
           ${
             receipt.template.showSignature
-              ? `<div class="signature">
+              ? `<div class="signature${signatureImageUrl ? ' has-image' : ''}">
+                   ${
+                     signatureImageUrl
+                       ? `<img src="${escapeHtml(signatureImageUrl)}" alt="${escapeHtml(
+                           receipt.template.signatureLabel,
+                         )}" />`
+                       : ''
+                   }
                    <div class="signature-line">${escapeHtml(receipt.template.signatureLabel)}</div>
                  </div>`
               : ''

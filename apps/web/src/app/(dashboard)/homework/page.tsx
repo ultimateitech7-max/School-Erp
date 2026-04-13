@@ -13,6 +13,7 @@ import {
   type HomeworkOptionsPayload,
   type HomeworkRecord,
 } from '@/utils/api';
+import { getStoredAuthSession, type AuthSession } from '@/utils/auth-storage';
 import { homeworkCsvColumns } from '@/utils/csv-exporters';
 import { buildCsvFilename, exportPaginatedApiCsv } from '@/utils/csv';
 import { HomeworkForm } from './HomeworkForm';
@@ -25,6 +26,7 @@ const initialMeta: ApiMeta = {
 };
 
 export default function HomeworkPage() {
+  const [session] = useState<AuthSession | null>(() => getStoredAuthSession());
   const [items, setItems] = useState<HomeworkRecord[]>([]);
   const [meta, setMeta] = useState<ApiMeta>(initialMeta);
   const [options, setOptions] = useState<HomeworkOptionsPayload | null>(null);
@@ -88,6 +90,8 @@ export default function HomeworkPage() {
   }, [page, deferredSearch, classId, sectionId, reloadIndex]);
 
   const sections = options?.classes.find((item) => item.id === classId)?.sections ?? [];
+  const canReadHomework = Boolean(session?.permissions.includes('homework.read'));
+  const canManageHomework = Boolean(session?.permissions.includes('homework.manage'));
 
   const handleSubmit = async (payload: HomeworkFormPayload) => {
     setSubmitting(true);
@@ -134,6 +138,17 @@ export default function HomeworkPage() {
       });
     }
   };
+
+  if (!canReadHomework) {
+    return (
+      <section className="card panel">
+        <h2>Homework Access Restricted</h2>
+        <p className="muted-text">
+          You do not have permission to access homework.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <div className="dashboard-stack">
@@ -188,7 +203,9 @@ export default function HomeworkPage() {
       {message ? <Banner tone={message.type}>{message.text}</Banner> : null}
 
       <div className="academic-grid">
-        <HomeworkForm options={options} submitting={submitting} onSubmit={handleSubmit} />
+        {canManageHomework ? (
+          <HomeworkForm options={options} submitting={submitting} onSubmit={handleSubmit} />
+        ) : null}
         <HomeworkTable items={items} loading={loading} meta={meta} onPageChange={setPage} />
       </div>
     </div>
